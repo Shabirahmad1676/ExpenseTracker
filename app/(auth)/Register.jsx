@@ -1,31 +1,87 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
-import React from 'react'
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native'
+import React, { useRef } from 'react'
 import { colors, spacingX, spacingY, radius } from '../../constants/theme'
 import { useRouter } from 'expo-router'
 import CustomInput from '../../components/CustomInput'
 import CustomButton from '../../components/CustomButton'
 import { Ionicons } from '@expo/vector-icons'
+import { useAuth } from '../../contexts/authContext'
 
 const Register = () => {
   const router = useRouter()
+  const [username, setUsername] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const { signup } = useAuth();
+
+
+  const handleRegister =async () => {
+    if (!username || !email || !password) {
+      console.log("All fields required");
+      return;
+    }
+
+     const response =  await signup(email,password,username)
+    console.log(response,"register compoent");
+
+    if(!response.success){
+      Alert.alert("sign UP",response.msg)
+    }
+  };
+
+ 
+
   return (
     <View style={styles.container}>
       
         <Ionicons onPress={() => router.back()} name={"arrow-back"} size={30} style={styles.buttonSecondaryText} />
      
-      <Text style={styles.heading}>Hey</Text>
-      <Text style={styles.heading}>Welcome Back</Text>
-      <Text style={styles.subheading}>Login now to track all your expenses.</Text>
+      <Text style={styles.heading}>Let's</Text>
+      <Text style={styles.heading}>get Started</Text>
+      <Text style={styles.subheading}>Create your account now to track all your expenses.</Text>
 
       <View style={styles.form}>
-        <CustomInput placeholder="Full name" icon="person" autoCapitalize="words" />
-        <CustomInput placeholder="Email" icon="mail" keyboardType="email-address" autoCapitalize="none" />
-        <CustomInput placeholder="Password" icon="lock-closed" secureTextEntry autoCapitalize="none" />
+      <CustomInput
+        value={username}
+        onChangeText={setUsername}
+        placeholder="Full name"
+        icon="person"
+        autoCapitalize="words"
+      />
+      <CustomInput
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email"
+        icon="mail"
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+      <CustomInput
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        icon="lock-closed"
+        secureTextEntry
+        autoCapitalize="none"
+      />
+
       </View>
 
-      <Text style={styles.footer}>Already have an account?LogIn</Text>
+      {/* <Text style={styles.footer}>Already have an account?LogIn</Text> */}
 
-      <CustomButton title="Create account" onPress={() => {}} style={styles.primaryButton} />
+
+
+      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'right',gap:10}}>
+        <Text style={{ textAlign: "right", color: colors.green, marginTop: 12 }}>
+         Don't have an account?
+        </Text>
+        <TouchableOpacity onPress={()=>router.navigate('/(auth)/Login')}>
+          <Text style={{textAlign: "right", color: colors.green, fontWeight:500.,marginTop:12}}>Login</Text>
+        </TouchableOpacity>
+      </View>
+
+
+      <CustomButton title="Create account" onPress={handleRegister} style={styles.primaryButton} />
 
      
     </View>
