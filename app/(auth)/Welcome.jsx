@@ -101,6 +101,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.neutral900,
+
   },
   headerAction: {
     position: "absolute",
@@ -110,8 +111,8 @@ const styles = StyleSheet.create({
   },
   illustration: {
     alignSelf: "center",
-    width:380,
-    height: 380,
+    width:300,
+    height: 300,
     resizeMode: "contain",
     marginTop: spacingY._60,
   },
