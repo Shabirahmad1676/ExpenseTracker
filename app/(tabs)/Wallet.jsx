@@ -4,21 +4,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../constants/theme";
 import { useAuth } from "../../contexts/authContext";
 import { firestore } from "../../config/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import AddWalletModal from "../(modals)/AddWalletModal";
 
 const Wallet = () => {
   const { user } = useAuth();
   const [wallets, setWallets] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Fetch wallets
   useEffect(() => {
     if (!user?.uid) return;
-
-    // This does two key things:
-    // Listens in real-time to all wallets where uid == user.uid.
-  // Whenever wallets change (add, update, delete), onSnapshot re-runs and updates your local wallets state.
 
     const walletsRef = collection(firestore, "wallets");
     const q = query(walletsRef, where("uid", "==", user.uid));
@@ -31,9 +29,44 @@ const Wallet = () => {
     return unsubscribe;
   }, [user?.uid]);
 
+  // Fetch transactions for balance calculation
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const txRef = collection(firestore, "transactions");
+    const q = query(txRef, where("uid", "==", user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setTransactions(data);
+    });
+
+    return unsubscribe;
+  }, [user?.uid]);
+
   const calculateTotalBalance = () => {
-    // For now, showing mock data. In real app, sum all wallet balances
-    return wallets.length * 500; // Mock $500 per wallet
+    let totalIncome = 0;
+    let totalExpense = 0;
+    
+    transactions.forEach((tx) => {
+      if (tx.type === "income") totalIncome += tx.amount;
+      else totalExpense += tx.amount;
+    });
+    
+    return totalIncome - totalExpense;
+  };
+
+  const calculateWalletBalance = (walletId) => {
+    let income = 0;
+    let expense = 0;
+    
+    transactions.forEach((tx) => {
+      if (tx.walletId === walletId) {
+        if (tx.type === "income") income += tx.amount;
+        else expense += tx.amount;
+      }
+    });
+    
+    return income - expense;
   };
 
   return (
@@ -108,7 +141,9 @@ const Wallet = () => {
               </View>
               
               <Text style={styles.walletCardName}>{item.walletName}</Text>
-              <Text style={styles.walletCardBalance}>$500.00</Text>
+              <Text style={styles.walletCardBalance}>
+                ${calculateWalletBalance(item.id).toFixed(2)}
+              </Text>
               
               <View style={styles.walletCardFooter}>
                 <Text style={styles.walletCardDate}>

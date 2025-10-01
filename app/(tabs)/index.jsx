@@ -13,6 +13,7 @@ const HomeScreen = () => {
   const [expense, setExpense] = useState(0);
   const [showAddModal, setShowAddModal] = useState(false);
   const [transactions, setTransactions] = useState([]);
+  const [wallets, setWallets] = useState([]);
   const [selectedTx, setSelectedTx] = useState(null);
 
   // 🔹 Fetch user profile
@@ -27,6 +28,21 @@ const HomeScreen = () => {
     });
 
     return unsub;
+  }, []);
+
+  // 🔹 Fetch wallets
+  useEffect(() => {
+    if (!auth.currentUser?.uid) return;
+
+    const walletsRef = collection(firestore, "wallets");
+    const walletsQuery = query(walletsRef, where("uid", "==", auth.currentUser.uid));
+    
+    const unsubscribeWallets = onSnapshot(walletsQuery, (snapshot) => {
+      const walletData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setWallets(walletData);
+    });
+
+    return unsubscribeWallets;
   }, []);
 
   // 🔹 Fetch transactions in real-time
@@ -45,10 +61,15 @@ const HomeScreen = () => {
       const txData = snapshot.docs.map((doc) => {
         const data = doc.data();
         const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date());
+        
+        // Find wallet info for this transaction
+        const wallet = wallets.find(w => w.id === data.walletId);
+        
         return {
           id: doc.id,
           ...data,
           createdAt,
+          walletName: wallet?.walletName || "Unknown Wallet",
         };
       });
       setTransactions(txData);
@@ -67,7 +88,7 @@ const HomeScreen = () => {
     });
 
     return unsubscribe;
-  }, []);
+  }, [wallets]);
 
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: "#fff" }}>
@@ -117,7 +138,13 @@ const HomeScreen = () => {
           >
             <View style={{ flex: 1 }}>
               <Text style={{ fontWeight: "600" }}>{item.title}</Text>
-              <Text style={{ color: "#777", marginTop: 2 }}>{item.createdAt ? item.createdAt.toLocaleString() : ""}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
+                <Ionicons name="wallet-outline" size={12} color="#777" />
+                <Text style={{ color: "#777", marginLeft: 4, fontSize: 12 }}>{item.walletName}</Text>
+              </View>
+              <Text style={{ color: "#777", marginTop: 2, fontSize: 12 }}>
+                {item.createdAt ? item.createdAt.toLocaleString() : ""}
+              </Text>
             </View>
             <Text style={{ color: item.type === "income" ? "green" : "red", fontWeight: "600" }}>
               {item.type === "income" ? "+" : "-"}${Number(item.amount).toFixed(2)}
