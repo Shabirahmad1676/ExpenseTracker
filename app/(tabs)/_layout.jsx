@@ -31,9 +31,12 @@ export default function TabsLayout() {
             case "Wallet":
               iconName = focused ? "wallet" : "wallet-outline";
               break;
-            case "Statistic":
-              iconName = focused ? "stats-chart" : "stats-chart-outline";
+            case "Market":
+              iconName = focused ? "cart" : "cart-outline";
               break;
+            // case "Statistic":
+            //   iconName = focused ? "stats-chart" : "stats-chart-outline";
+            //   break;
           }
 
           return <Ionicons name={iconName} size={22} color={color} />;
@@ -43,7 +46,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="Profile" options={{ title: "Profile" }} />
       <Tabs.Screen name="Wallet" options={{ title: "Wallet" }} />
-      <Tabs.Screen name="Statistic" options={{ title: "Statistic" }} />
+      <Tabs.Screen name="Market" options={{ title: "Market" }} />
+      <Tabs.Screen name="Statistic" options={{ title: "Statistic", href: null }} />
     </Tabs>
   );
 }

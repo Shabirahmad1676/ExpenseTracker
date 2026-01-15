@@ -1,13 +1,13 @@
 import { View, Text, StyleSheet } from 'react-native'
 import React from 'react'
-import {useSafeAreaInsets} from 'react-native-safe-area-context'
-import {colors} from '../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { colors } from '../constants/theme';
 
 
-const SafeScreen = ({children}) => {
+const SafeScreen = ({ children }) => {
   const inset = useSafeAreaInsets()
   return (
-    <View style={[styles.container,{paddingTop:inset.top}]}>
+    <View style={[styles.container, { paddingTop: inset.top, paddingBottom: inset.bottom }]}>
       {children}
     </View>
   )
@@ -16,9 +16,9 @@ const SafeScreen = ({children}) => {
 export default SafeScreen
 
 
-const styles =  StyleSheet.create({
-  container : {
-    flex:1,
-    backgroundColor:colors.neutral900
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.neutral900
   }
 })
