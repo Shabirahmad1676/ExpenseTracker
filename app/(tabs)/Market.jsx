@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import {
-    View,
-    Text,
+    ActivityIndicator,
+    Alert,
     FlatList,
+    Image,
+    Linking,
+    StyleSheet,
+    Text,
     TextInput,
     TouchableOpacity,
-    Image,
-    StyleSheet,
-    ActivityIndicator,
-    Linking,
-    Alert,
+    View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../constants/theme";
-import { collection, getDocs, addDoc, deleteDoc, doc, query, where, onSnapshot } from "firebase/firestore";
-import { firestore, auth } from "../../config/firebase";
 import { SafeAreaView } from "react-native-safe-area-context";
+import WealthModal from "../(modals)/WealthModal";
+import { auth, firestore } from "../../config/firebase";
+import { colors } from "../../constants/theme";
 
-// --- RESET: Updated with Real Links ---
-// --- RESET: Updated with More Laptops ---
+
 const MOCK_PRODUCTS = [
     {
         name: "Itel Super S26 Ultra",
@@ -68,6 +68,7 @@ export default function Market() {
     // Smart Filters State
     const [budget, setBudget] = useState("0"); // Init with 0, will update with real balance
     const [selectedCategory, setSelectedCategory] = useState("All");
+    const [showWealthModal, setShowWealthModal] = useState(false);
 
     // --- REAL BALANCE FETCHING ---
     useEffect(() => {
@@ -93,25 +94,25 @@ export default function Market() {
         return unsubscribe;
     }, []);
 
-    const fetchProducts = async () => {
+    // --- REAL-TIME PRODUCTS LISTENER ---
+    useEffect(() => {
         setLoading(true);
-        try {
-            const querySnapshot = await getDocs(collection(firestore, "market_products"));
-            const fetchedProducts = querySnapshot.docs.map((doc) => ({
+        const q = query(collection(firestore, "market_products"));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const fetchedProducts = snapshot.docs.map((doc) => ({
                 id: doc.id,
                 ...doc.data(),
             }));
             setProducts(fetchedProducts);
-        } catch (error) {
-            console.error("Error fetching products: ", error);
-            Alert.alert("Error", "Failed to fetch products");
-        } finally {
             setLoading(false);
-        }
-    };
+        }, (error) => {
+            console.error("Error listening to products: ", error);
+            setLoading(false);
+        });
 
-    useEffect(() => {
-        fetchProducts();
+        // Cleanup subscription on unmount
+        return () => unsubscribe();
     }, []);
 
     // --- SCRAPER LOGIC using RegEx ---
@@ -172,7 +173,8 @@ export default function Market() {
 
             await Promise.all(updatePromises);
             Alert.alert("Success", "Database updated with LIVE prices!");
-            fetchProducts();
+            Alert.alert("Success", "Database updated with LIVE prices!");
+            // fetchProducts(); // Removed: onSnapshot handles updates automatically
         } catch (error) {
             console.error("Error updating database: ", error);
             Alert.alert("Error", "Failed to update database");
@@ -239,119 +241,126 @@ export default function Market() {
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
-            <View style={styles.header}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.headerTitle}>Marketplace</Text>
-                    <View style={styles.budgetInputContainer}>
-                        <Text style={styles.currencyLabel}>PKR</Text>
-                        <TextInput
-                            style={styles.budgetInput}
-                            value={budget}
-                            onChangeText={setBudget}
-                            keyboardType="numeric"
-                            placeholder="Budget"
-                            placeholderTextColor={colors.neutral500}
-                        />
-                    </View>
-                </View>
-                <Text style={styles.budgetSubtitle}>Showing items under your budget</Text>
-            </View>
+            <FlatList
+                data={filteredProducts}
+                keyExtractor={(item, index) => item.id || index.toString()}
+                renderItem={renderItem}
+                contentContainerStyle={styles.listContent}
+                ListHeaderComponent={
+                    <>
+                        <View style={styles.header}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={styles.headerTitle}>Marketplace</Text>
+                                <View style={styles.budgetInputContainer}>
+                                    <Text style={styles.currencyLabel}>PKR</Text>
+                                    <TextInput
+                                        style={styles.budgetInput}
+                                        value={budget}
+                                        onChangeText={setBudget}
+                                        keyboardType="numeric"
+                                        placeholder="Budget"
+                                        placeholderTextColor={colors.neutral500}
+                                    />
+                                </View>
+                            </View>
+                            <Text style={styles.budgetSubtitle}>Showing items under your budget</Text>
 
-            {/* Categories */}
-            <View style={styles.categoryContainer}>
-                <FlatList
-                    horizontal
-                    data={CATEGORIES}
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={item => item}
-                    contentContainerStyle={{ paddingHorizontal: 20 }}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={[
-                                styles.categoryChip,
-                                selectedCategory === item && styles.categoryChipActive
-                            ]}
-                            onPress={() => setSelectedCategory(item)}
-                        >
-                            <Text style={[
-                                styles.categoryChipText,
-                                selectedCategory === item && styles.categoryChipTextActive
-                            ]}>
-                                {item}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                />
-            </View>
-
-            <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={colors.neutral400} style={styles.searchIcon} />
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search items..."
-                    placeholderTextColor={colors.neutral400}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                />
-            </View>
-
-            {loading ? (
-                <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-            ) : products.length === 0 ? (
-                <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No products found in database.</Text>
-                    <TouchableOpacity style={styles.seedButton} onPress={updatePrices} disabled={seeding}>
-                        {seeding ? (
-                            <ActivityIndicator color={colors.neutral900} />
-                        ) : (
-                            <Text style={styles.seedButtonText}>Load Live Data (Scrape)</Text>
-                        )}
-                    </TouchableOpacity>
-                </View>
-            ) : (
-                <FlatList
-                    data={filteredProducts}
-                    keyExtractor={(item, index) => item.id || index.toString()}
-                    renderItem={renderItem}
-                    contentContainerStyle={styles.listContent}
-
-                    // Show Search Outside button in footer so it's always accessible
-                    ListFooterComponent={
-                        <View style={{ gap: 10, marginTop: 25 }}>
-                            <TouchableOpacity style={styles.fallbackButton} onPress={handleSearchOutside}>
-                                <Ionicons name="logo-google" size={20} color={colors.white} style={{ marginRight: 8 }} />
-                                <Text style={styles.fallbackButtonText}>Search Outside Market</Text>
-                            </TouchableOpacity>
-
+                            {/* WEALTH BANNER */}
                             <TouchableOpacity
-                                style={[styles.fallbackButton, { backgroundColor: colors.neutral700, borderColor: colors.neutral600 }]}
-                                onPress={updatePrices}
-                                disabled={seeding}
+                                onPress={() => setShowWealthModal(true)}
+                                style={styles.wealthBanner}
                             >
-                                {seeding ? (
-                                    <ActivityIndicator color={colors.white} size="small" />
-                                ) : (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        <Ionicons name="cloud-download" size={18} color={colors.neutral400} style={{ marginRight: 8 }} />
-                                        <Text style={[styles.fallbackButtonText, { color: colors.neutral400, fontSize: 14 }]}>Update Live Prices</Text>
+                                <View style={styles.wealthContent}>
+                                    <View style={styles.wealthIconBox}>
+                                        <Ionicons name="sparkles" size={24} color={colors.neutral900} />
                                     </View>
+                                    <View>
+                                        <Text style={styles.wealthTitle}>AI Wealth Dashboard</Text>
+                                        <Text style={styles.wealthSubtitle}>Investment Advisor & Savings Goals</Text>
+                                    </View>
+                                </View>
+                                <Ionicons name="chevron-forward" size={24} color={colors.neutral900} />
+                            </TouchableOpacity>
+
+                        </View>
+
+                        {/* Categories */}
+                        <View style={styles.categoryContainer}>
+                            <FlatList
+                                horizontal
+                                data={CATEGORIES}
+                                showsHorizontalScrollIndicator={false}
+                                keyExtractor={item => item}
+                                contentContainerStyle={{ paddingHorizontal: 20 }}
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.categoryChip,
+                                            selectedCategory === item && styles.categoryChipActive
+                                        ]}
+                                        onPress={() => setSelectedCategory(item)}
+                                    >
+                                        <Text style={[
+                                            styles.categoryChipText,
+                                            selectedCategory === item && styles.categoryChipTextActive
+                                        ]}>
+                                            {item}
+                                        </Text>
+                                    </TouchableOpacity>
                                 )}
-                            </TouchableOpacity>
+                            />
                         </View>
-                    }
-                    // Show Search Outside button in middle if search returns nothing
-                    ListEmptyComponent={
-                        <View style={{ alignItems: 'center', marginTop: 20 }}>
-                            <Text style={styles.emptyText}>No budget-friendly items found for "{searchQuery}"</Text>
-                            <TouchableOpacity style={styles.fallbackButton} onPress={handleSearchOutside}>
-                                <Ionicons name="logo-google" size={20} color={colors.neutral900} style={{ marginRight: 8 }} />
-                                <Text style={styles.fallbackButtonText}>Search Outside Market</Text>
-                            </TouchableOpacity>
+
+                        <View style={styles.searchContainer}>
+                            <Ionicons name="search" size={20} color={colors.neutral400} style={styles.searchIcon} />
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Search items..."
+                                placeholderTextColor={colors.neutral400}
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                            />
                         </View>
-                    }
-                />
-            )
-            }
+                    </>
+                }
+                ListFooterComponent={
+                    <View style={{ gap: 10, marginTop: 25 }}>
+                        <TouchableOpacity style={styles.fallbackButton} onPress={handleSearchOutside}>
+                            <Ionicons name="logo-google" size={20} color={colors.white} style={{ marginRight: 8 }} />
+                            <Text style={styles.fallbackButtonText}>Search Outside Market</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.fallbackButton, { backgroundColor: colors.neutral700, borderColor: colors.neutral600 }]}
+                            onPress={updatePrices}
+                            disabled={seeding}
+                        >
+                            {seeding ? (
+                                <ActivityIndicator color={colors.white} size="small" />
+                            ) : (
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Ionicons name="cloud-download" size={18} color={colors.neutral400} style={{ marginRight: 8 }} />
+                                    <Text style={[styles.fallbackButtonText, { color: colors.neutral400, fontSize: 14 }]}>Update Live Prices</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                }
+                ListEmptyComponent={
+                    <View style={{ alignItems: 'center', marginTop: 20 }}>
+                        <Text style={styles.emptyText}>No budget-friendly items found for "{searchQuery}"</Text>
+                        <TouchableOpacity style={styles.fallbackButton} onPress={handleSearchOutside}>
+                            <Ionicons name="logo-google" size={20} color={colors.neutral900} style={{ marginRight: 8 }} />
+                            <Text style={styles.fallbackButtonText}>Search Outside Market</Text>
+                        </TouchableOpacity>
+                    </View>
+                }
+            />
+            <WealthModal
+                visible={showWealthModal}
+                onClose={() => setShowWealthModal(false)}
+                surplus={Number(budget)}
+            />
         </SafeAreaView >
     );
 }
@@ -524,6 +533,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 12,
         paddingVertical: 8,
+        marginLeft: 10,
     },
     currencyLabel: {
         color: colors.primary,
@@ -582,5 +592,44 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: 'bold',
         textTransform: 'uppercase',
+    },
+    // New Styles for Wealth Banner
+    wealthBanner: {
+        backgroundColor: colors.primary,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 20,
+        borderRadius: 20,
+        marginBottom: 25,
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    wealthContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 15,
+    },
+    wealthIconBox: {
+        width: 45,
+        height: 45,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    wealthTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: colors.neutral900,
+        marginBottom: 2,
+    },
+    wealthSubtitle: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: colors.neutral800,
     },
 });
