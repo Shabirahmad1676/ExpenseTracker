@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  n8n-scraper:
+    build: .
+    ports:
+      - "5678:5678"
+    environment:
+      # Note: Basic Auth vars removed. You will set up your login via the web UI!
+      - GOOGLE_APPLICATION_CREDENTIALS=/home/node/scripts/service-account.json
+      # The critical fix to ensure the Execute Command node is available:
+      - NODES_EXCLUDE=[] 
+    volumes:
+      - ./ensetracker-5d277-firebase-adminsdk-fbsvc-085314b73c.json:/home/node/scripts/service-account.json
+      - ./scripts/scrape_market.js:/home/node/scripts/scrape_market.js
+      - n8n_data:/home/node/.n8n
+    restart: always
+
+volumes:
+  n8n_data:

@@ -33,6 +33,7 @@
     "expo-web-browser": "~15.0.7",
     "firebase": "^12.3.0",
     "groq-sdk": "^0.37.0",
+    "node-cron": "^4.2.1",
     "phosphor-react-native": "^3.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
