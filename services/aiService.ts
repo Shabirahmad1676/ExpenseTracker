@@ -104,3 +104,37 @@ export const parseProductDetails = async (htmlChunk: string) => {
         return null;
     }
 };
+
+export const getChatResponse = async (messages: any[], context: { balance: number, recentTransactions: any[] }) => {
+    try {
+        const systemPrompt = `
+            You are Montra AI, a personal financial assistant for the Expense Tracker app.
+            Your goal is to help users manage their money, provide spending insights, and offer budgeting advice.
+            
+            Current Financial Context:
+            - Current Balance: PKR ${context.balance.toLocaleString()}
+            - Recent Transactions: ${JSON.stringify(context.recentTransactions)}
+            
+            Instructions:
+            1. Be helpful, professional, and empathetic.
+            2. Use the provided financial context to answer specific questions about spending.
+            3. Keep advice practical and locally relevant (Pakistan context).
+            4. Use PKR for all currency references.
+            5. If asked about buying something, recommend checking the "Market" tab.
+        `;
+
+        const completion = await groq.chat.completions.create({
+            messages: [
+                { role: "system", content: systemPrompt },
+                ...messages
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+        });
+
+        return completion.choices[0]?.message?.content || "I'm sorry, I couldn't process that request.";
+    } catch (error) {
+        console.error("Groq Chat Error:", error);
+        return "I'm having trouble connecting to my brain right now. Please try again later!";
+    }
+};
