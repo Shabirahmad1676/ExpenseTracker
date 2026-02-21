@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, where } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -13,62 +13,63 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import WealthModal from "../(modals)/WealthModal";
 import { auth, firestore } from "../../config/firebase";
 import { colors } from "../../constants/theme";
-
-
-const MOCK_PRODUCTS = [
-    {
-        name: "Itel Super S26 Ultra",
-        price: 44999,
-        category: "Mobile",
-        image: "https://images.priceoye.pk/itel-super-s26-ultra-pakistan-priceoye-jg2my-500x500.webp",
-        productUrl: "https://priceoye.pk/mobiles/itel/itel-super-s26-ultra"
-    },
-    {
-        name: "Tecno Spark Go 1",
-        price: 39999,
-        category: "Mobile",
-        image: "https://images.priceoye.pk/tecno-spark-go-1-pakistan-priceoye-ljx8q-500x500.webp",
-        productUrl: "https://priceoye.pk/mobiles/tecno/tecno-spark-go-1"
-    },
-    {
-        name: "Lenovo ThinkPad E14 Gen 4 Ryzen 5 DOS",
-        price: 48000,
-        category: "Laptop",
-        image: "https://images.priceoye.pk/lenovo-thinkpad-e14-gen-4-ryzen-5-dos-pakistan-priceoye-p76fx-500x500.webp",
-        productUrl: "https://priceoye.pk/laptops/lenovo/lenovo-thinkpad-e14-gen-4-ryzen-5-dos"
-    },
-    {
-        name: "HP EliteBook 840 G3 (Refurb)",
-        price: 52000,
-        category: "Laptop",
-        image: "https://images.priceoye.pk/hp-elitebook-pakistan-priceoye-rk3yt-500x500.webp",
-        productUrl: "https://priceoye.pk/laptops/hp/hp-elitebook"
-    },
-    {
-        name: "Redmi Buds 4 Active",
-        price: 4500,
-        category: "Audio",
-        image: "https://images.priceoye.pk/redmi-buds-4-active-pakistan-priceoye-0laiv-500x500.webp",
-        productUrl: "https://priceoye.pk/wireless-earbuds/xiaomi/redmi-buds-4-active"
-    }
-];
+import { useDebounce } from "../../hooks/useDebounce";
+import { useProductDiscovery } from "../../hooks/useProductDiscovery";
 
 const CATEGORIES = ["All", "Mobile", "Laptop", "Audio"];
 
-export default function Market() {
-    const [products, setProducts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [seeding, setSeeding] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
+// ✅ PERFORMANCE: Memoized Product Card
+const ProductCard = memo(({ item, index, onBuy }) => (
+    <Animated.View
+        entering={FadeInDown.delay(Math.min(index * 50, 500)).duration(400)}
+        style={styles.card}
+    >
+        <Image
+            source={{ uri: item.imageUrl || item.image }}
+            style={styles.image}
+            resizeMode="contain"
+        />
+        <View style={styles.cardContent}>
+            <View>
+                <View style={styles.categoryBadge}>
+                    <Text style={styles.categoryText}>{item.category || 'Product'}</Text>
+                </View>
+                <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+            </View>
+            <View style={styles.priceRow}>
+                <View>
+                    <Text style={styles.priceLabel}>Current Price</Text>
+                    <Text style={styles.productPrice}>PKR {item.price.toLocaleString()}</Text>
+                </View>
+                <TouchableOpacity
+                    style={styles.buyButton}
+                    onPress={() => onBuy(item)}
+                >
+                    <Ionicons name="cart-outline" size={18} color={colors.neutral900} />
+                </TouchableOpacity>
+            </View>
+        </View>
+    </Animated.View>
+));
 
+export default function Market() {
     // Smart Filters State
-    const [budget, setBudget] = useState("0"); // Init with 0, will update with real balance
+    const [budget, setBudget] = useState("0");
     const [selectedCategory, setSelectedCategory] = useState("All");
+    const [searchQuery, setSearchQuery] = useState("");
     const [showWealthModal, setShowWealthModal] = useState(false);
+
+    // ✅ PERFORMANCE: Debounce budget input to prevent rapid Firestore queries
+    const debouncedBudget = useDebounce(budget, 500);
+    const numericBudget = useMemo(() => parseInt(debouncedBudget) || 0, [debouncedBudget]);
+
+    // Hook for Product Discovery
+    const { affordablePhones, loading, error } = useProductDiscovery(numericBudget, selectedCategory);
 
     // --- REAL BALANCE FETCHING ---
     useEffect(() => {
@@ -87,211 +88,99 @@ export default function Market() {
             });
 
             const totalBalance = totalIncome - totalExpense;
-            console.log("Real Balance Updated:", totalBalance);
             setBudget(totalBalance.toString());
         });
 
         return unsubscribe;
     }, []);
 
-    // --- REAL-TIME PRODUCTS LISTENER ---
-    useEffect(() => {
-        setLoading(true);
-        const q = query(collection(firestore, "market_products"));
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedProducts = snapshot.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-            }));
-            setProducts(fetchedProducts);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error listening to products: ", error);
-            setLoading(false);
-        });
-
-        // Cleanup subscription on unmount
-        return () => unsubscribe();
-    }, []);
-
-    // --- SCRAPER LOGIC using RegEx ---
-    const updatePrices = async () => {
-        setSeeding(true);
-        try {
-            const collectionRef = collection(firestore, "market_products");
-
-            // 1. DELETE OLD DATA (Cleanup to show only 5 items)
-            const snapshot = await getDocs(collectionRef);
-            const deletePromises = snapshot.docs.map(d => deleteDoc(doc(firestore, "market_products", d.id)));
-            await Promise.all(deletePromises);
-            console.log("Old data cleared.");
-
-            // 2. ADD NEW MOCK DATA (With live prices)
-            const updatePromises = MOCK_PRODUCTS.map(async (product) => {
-                let currentPrice = product.price;
-
-                if (product.productUrl && product.productUrl.includes('priceoye.pk')) {
-                    try {
-                        console.log(`Fetching ${product.name}...`);
-                        // Fetch the HTML text
-                        const response = await fetch(product.productUrl, {
-                            headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36' }
-                        });
-                        const html = await response.text();
-
-                        // --- REGEX PARSER (Native / Safe) ---
-                        // 1. Try to find Meta Tag: <meta property="product:price:amount" content="44999"/>
-                        const metaRegex = /<meta property="product:price:amount" content="(\d+)"/i;
-                        const metaMatch = html.match(metaRegex);
-
-                        // 2. Try to find PriceOye specific class: <div class="summary-price">...</div>
-                        const classRegex = /summary-price[^>]*>[\s\S]*?(\d{2,},?\d{3})/;
-                        const classMatch = html.match(classRegex);
-
-                        if (metaMatch && metaMatch[1]) {
-                            currentPrice = parseInt(metaMatch[1]);
-                            console.log(`[Regex] Updated Price (Meta) for ${product.name}: ${currentPrice}`);
-                        } else if (classMatch && classMatch[1]) {
-                            currentPrice = parseInt(classMatch[1].replace(/,/g, ''));
-                            console.log(`[Regex] Updated Price (Class) for ${product.name}: ${currentPrice}`);
-                        } else {
-                            console.log(`[Regex] No price pattern found for ${product.name}`);
-                        }
-                    } catch (err) {
-                        console.error(`Failed to scrape ${product.name}: ${err}`);
-                    }
-                }
-
-                // Add/Update to Firestore with timestamp
-                return addDoc(collectionRef, {
-                    ...product,
-                    price: currentPrice,
-                    lastUpdated: new Date().toISOString()
-                });
-            });
-
-            await Promise.all(updatePromises);
-            Alert.alert("Success", "Database updated with LIVE prices!");
-            Alert.alert("Success", "Database updated with LIVE prices!");
-            // fetchProducts(); // Removed: onSnapshot handles updates automatically
-        } catch (error) {
-            console.error("Error updating database: ", error);
-            Alert.alert("Error", "Failed to update database");
-        } finally {
-            setSeeding(false);
-        }
-    };
-
-    const handleSearchOutside = () => {
-        const query = `site:priceoye.pk ${searchQuery} ${selectedCategory !== 'All' ? selectedCategory : ''} under ${budget}`;
-        const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    const handleSearchOutside = useCallback(() => {
+        const queryStr = `site:priceoye.pk ${searchQuery} ${selectedCategory !== 'All' ? selectedCategory : ''} under ${budget}`;
+        const url = `https://www.google.com/search?q=${encodeURIComponent(queryStr)}`;
         Linking.openURL(url);
-    };
+    }, [searchQuery, selectedCategory, budget]);
 
-    // --- UPDATED: Redirect to Real Website ---
-    const handleBuy = (item) => {
+    const handleBuy = useCallback((item) => {
         if (item.productUrl) {
             Linking.openURL(item.productUrl).catch(err =>
                 Alert.alert("Error", "Could not open link: " + err)
             );
         } else {
-            // Fallback for old items without links
-            const query = `${item.name} price in pakistan buy online`;
-            const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+            const queryStr = `${item.name} price in pakistan buy online`;
+            const url = `https://www.google.com/search?q=${encodeURIComponent(queryStr)}`;
             Linking.openURL(url);
         }
-    };
+    }, []);
 
-    const filteredProducts = products.filter((item) => {
-        const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const budgetLimit = parseInt(budget) || 0;
-        const withinBudget = item.price <= budgetLimit;
-        const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
+    const filteredProducts = useMemo(() => {
+        if (!affordablePhones) return [];
+        return affordablePhones.filter((item) =>
+            item.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [affordablePhones, searchQuery]);
 
-        return matchesSearch && withinBudget && matchesCategory;
-    });
-
-    const renderItem = ({ item }) => (
-        <View style={styles.card}>
-            <Image
-                source={{ uri: item.image }}
-                style={styles.image}
-                resizeMode="cover"
-            />
-            <View style={styles.cardContent}>
-                <View>
-                    <View style={styles.categoryBadge}>
-                        <Text style={styles.categoryText}>{item.category || 'Product'}</Text>
-                    </View>
-                    <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-                </View>
-                <View>
-                    <Text style={styles.productPrice}>PKR {item.price.toLocaleString()}</Text>
-                    <TouchableOpacity
-                        style={styles.buyButton}
-                        onPress={() => handleBuy(item)}
-                    >
-                        <Text style={styles.buyButtonText}>Buy</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </View>
-    );
+    const renderItem = useCallback(({ item, index }) => (
+        <ProductCard item={item} index={index} onBuy={handleBuy} />
+    ), [handleBuy]);
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
             <FlatList
                 data={filteredProducts}
-                keyExtractor={(item, index) => item.id || index.toString()}
+                keyExtractor={(item) => item.id}
                 renderItem={renderItem}
                 contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+
+                // ✅ PERFORMANCE: Optimized FlatList configurations
+                initialNumToRender={6}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={true}
+
                 ListHeaderComponent={
-                    <>
-                        <View style={styles.header}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Text style={styles.headerTitle}>Marketplace</Text>
-                                <View style={styles.budgetInputContainer}>
-                                    <Text style={styles.currencyLabel}>PKR</Text>
+                    <View style={styles.headerSection}>
+                        <View style={styles.topRow}>
+                            <View>
+                                <Text style={styles.headerTitle}>Discovery</Text>
+                                <Text style={styles.headerSubtitle}>Find what fits your pocket</Text>
+                            </View>
+                            {/* <TouchableOpacity
+                                onPress={() => setShowWealthModal(true)}
+                                style={styles.wealthIcon}
+                            >
+                                <Ionicons name="sparkles" size={24} color={colors.primary} />
+                            </TouchableOpacity> */}
+                        </View>
+
+                        <View style={styles.budgetCard}>
+                            <View style={styles.budgetInfo}>
+                                <Text style={styles.budgetLabel}>Your Shopping Power</Text>
+                                <View style={styles.budgetRow}>
+                                    <Text style={styles.budgetCurrency}>PKR</Text>
                                     <TextInput
                                         style={styles.budgetInput}
                                         value={budget}
                                         onChangeText={setBudget}
                                         keyboardType="numeric"
-                                        placeholder="Budget"
+                                        placeholder="0"
                                         placeholderTextColor={colors.neutral500}
                                     />
                                 </View>
                             </View>
-                            <Text style={styles.budgetSubtitle}>Showing items under your budget</Text>
-
-                            {/* WEALTH BANNER */}
-                            <TouchableOpacity
-                                onPress={() => setShowWealthModal(true)}
-                                style={styles.wealthBanner}
-                            >
-                                <View style={styles.wealthContent}>
-                                    <View style={styles.wealthIconBox}>
-                                        <Ionicons name="sparkles" size={24} color={colors.neutral900} />
-                                    </View>
-                                    <View>
-                                        <Text style={styles.wealthTitle}>AI Wealth Dashboard</Text>
-                                        <Text style={styles.wealthSubtitle}>Investment Advisor & Savings Goals</Text>
-                                    </View>
+                            <View style={styles.budgetVisual}>
+                                <View style={styles.progressTrack}>
+                                    <View style={[styles.progressFill, { width: '100%' }]} />
                                 </View>
-                                <Ionicons name="chevron-forward" size={24} color={colors.neutral900} />
-                            </TouchableOpacity>
-
+                            </View>
                         </View>
 
-                        {/* Categories */}
-                        <View style={styles.categoryContainer}>
+                        <View style={styles.categoryScroll}>
                             <FlatList
                                 horizontal
                                 data={CATEGORIES}
                                 showsHorizontalScrollIndicator={false}
                                 keyExtractor={item => item}
-                                contentContainerStyle={{ paddingHorizontal: 20 }}
                                 renderItem={({ item }) => (
                                     <TouchableOpacity
                                         style={[
@@ -312,54 +201,54 @@ export default function Market() {
                         </View>
 
                         <View style={styles.searchContainer}>
-                            <Ionicons name="search" size={20} color={colors.neutral400} style={styles.searchIcon} />
+                            <Ionicons name="search" size={20} color={colors.neutral400} />
                             <TextInput
                                 style={styles.searchInput}
-                                placeholder="Search items..."
+                                placeholder="Search products..."
                                 placeholderTextColor={colors.neutral400}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
                             />
                         </View>
-                    </>
-                }
-                ListFooterComponent={
-                    <View style={{ gap: 10, marginTop: 25 }}>
-                        <TouchableOpacity style={styles.fallbackButton} onPress={handleSearchOutside}>
-                            <Ionicons name="logo-google" size={20} color={colors.white} style={{ marginRight: 8 }} />
-                            <Text style={styles.fallbackButtonText}>Search Outside Market</Text>
-                        </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={[styles.fallbackButton, { backgroundColor: colors.neutral700, borderColor: colors.neutral600 }]}
-                            onPress={updatePrices}
-                            disabled={seeding}
-                        >
-                            {seeding ? (
-                                <ActivityIndicator color={colors.white} size="small" />
-                            ) : (
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Ionicons name="cloud-download" size={18} color={colors.neutral400} style={{ marginRight: 8 }} />
-                                    <Text style={[styles.fallbackButtonText, { color: colors.neutral400, fontSize: 14 }]}>Update Live Prices</Text>
-                                </View>
-                            )}
-                        </TouchableOpacity>
+                        {loading && (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color={colors.primary} />
+                                <Text style={styles.loadingText}>Scouring the market...</Text>
+                            </View>
+                        )}
                     </View>
                 }
                 ListEmptyComponent={
-                    <View style={{ alignItems: 'center', marginTop: 20 }}>
-                        <Text style={styles.emptyText}>No budget-friendly items found for "{searchQuery}"</Text>
-                        <TouchableOpacity style={styles.fallbackButton} onPress={handleSearchOutside}>
-                            <Ionicons name="logo-google" size={20} color={colors.neutral900} style={{ marginRight: 8 }} />
-                            <Text style={styles.fallbackButtonText}>Search Outside Market</Text>
-                        </TouchableOpacity>
-                    </View>
+                    !loading && (
+                        <View style={styles.emptyContainer}>
+                            <View style={styles.emptyIconCircle}>
+                                <Ionicons name="basket-outline" size={48} color={colors.neutral600} />
+                            </View>
+                            <Text style={styles.emptyTitle}>No budget-friendly finds</Text>
+                            <Text style={styles.emptyDesc}>Try increasing your budget or changing filters</Text>
+                            <TouchableOpacity style={styles.googleButton} onPress={handleSearchOutside}>
+                                <Ionicons name="logo-google" size={20} color={colors.white} />
+                                <Text style={styles.googleButtonText}>Search Outside Market</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )
+                }
+                ListFooterComponent={
+                    !loading && filteredProducts.length > 0 && (
+                        <View style={styles.footer}>
+                            <TouchableOpacity style={styles.refreshBadge}>
+                                <Ionicons name="sync" size={14} color={colors.neutral500} />
+                                <Text style={styles.refreshText}>Prices updated by AI bot</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )
                 }
             />
             <WealthModal
                 visible={showWealthModal}
                 onClose={() => setShowWealthModal(false)}
-                surplus={Number(budget)}
+                surplus={numericBudget}
             />
         </SafeAreaView >
     );
@@ -368,202 +257,97 @@ export default function Market() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#121212", // Deeper dark background
+        backgroundColor: "#0A0A0A",
     },
-    header: {
+    headerSection: {
         paddingHorizontal: 20,
-        paddingBottom: 15,
         paddingTop: 10,
     },
-    headerTitle: {
-        fontSize: 32,
-        fontWeight: "800",
-        color: colors.white,
-        letterSpacing: 0.5,
-    },
-    budget: {
-        fontSize: 16,
-        color: colors.primary, // Pop color
-        marginTop: 5,
-        fontWeight: "600",
-    },
-    searchContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: colors.neutral800,
-        marginHorizontal: 20,
-        borderRadius: 16,
-        paddingHorizontal: 15,
-        marginBottom: 25,
-        height: 55,
-        borderWidth: 1,
-        borderColor: colors.neutral700,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 4,
-    },
-    searchIcon: {
-        marginRight: 10,
-    },
-    searchInput: {
-        flex: 1,
-        color: colors.white,
-        fontSize: 16,
-        fontWeight: "500",
-    },
-    listContent: {
-        paddingHorizontal: 20,
-        paddingBottom: 100,
-    },
-    card: {
-        backgroundColor: colors.neutral800,
-        // backgroundColor: 'red',
-        borderRadius: 20,
-        marginBottom: 20,
-        overflow: "hidden",
-        flexDirection: "row",
-        height: 170, // Taller card
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 5 },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
-        elevation: 8,
-        borderWidth: 1,
-        borderColor: colors.neutral700,
-    },
-    image: {
-        width: 130,
-        height: "100%",
-        backgroundColor: '#2a2a2a',
-    },
-    cardContent: {
-        // backgroundColor: 'red',
-        flex: 1,
-        padding: 15,
-        paddingBottom: 25,
-        justifyContent: "space-between",
-    },
-    productName: {
-        fontSize: 17,
-        fontWeight: "700",
-        color: colors.white,
-        lineHeight: 24,
-    },
-    productPrice: {
-        fontSize: 20,
-        fontWeight: "800",
-        color: colors.primary,
-        marginVertical: 4,
-    },
-    buyButton: {
-        backgroundColor: colors.primary,
-        paddingVertical: 6,
-        borderRadius: 12,
-        alignItems: "center",
-        alignSelf: "flex-start",
-        paddingHorizontal: 25,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.5,
-        shadowRadius: 4,
-        elevation: 4,
-    },
-    buyButtonText: {
-        color: colors.neutral900,
-        fontWeight: "800",
-        fontSize: 14,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-    },
-    loader: {
-        marginTop: 50,
-    },
-    emptyState: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        marginTop: 60,
-    },
-    emptyText: {
-        color: colors.neutral400,
-        fontSize: 18,
-        marginBottom: 20,
-        textAlign: 'center',
-        fontWeight: "500",
-    },
-    seedButton: {
-        backgroundColor: colors.primary,
-        paddingHorizontal: 25,
-        paddingVertical: 14,
-        borderRadius: 16,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-        elevation: 6,
-    },
-    seedButtonText: {
-        color: colors.neutral900,
-        fontWeight: "800",
-        fontSize: 16,
-    },
-    fallbackButton: {
+    topRow: {
         flexDirection: 'row',
-        backgroundColor: colors.neutral800,
-        padding: 18,
-        borderRadius: 16,
-        alignItems: "center",
-        justifyContent: "center",
-        marginTop: 25,
-        borderWidth: 1,
-        borderColor: colors.neutral600,
-    },
-    fallbackButtonText: {
-        color: colors.white,
-        fontWeight: "700",
-        fontSize: 16,
-    },
-    // New Styles for Smart Filter UI
-    budgetInputContainer: {
-        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: colors.neutral700,
-        borderRadius: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        marginLeft: 10,
+        marginBottom: 20,
     },
-    currencyLabel: {
+    headerTitle: {
+        fontSize: 34,
+        fontWeight: "900",
+        color: colors.white,
+        letterSpacing: -1,
+    },
+    headerSubtitle: {
+        fontSize: 14,
+        color: colors.neutral500,
+        marginTop: -2,
+    },
+    wealthIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: colors.neutral900,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.neutral800,
+    },
+    budgetCard: {
+        backgroundColor: colors.neutral900,
+        borderRadius: 24,
+        padding: 20,
+        marginBottom: 25,
+        borderWidth: 1,
+        borderColor: colors.neutral800,
+    },
+    budgetLabel: {
+        color: colors.neutral500,
+        fontSize: 12,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 8,
+    },
+    budgetRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+    },
+    budgetCurrency: {
         color: colors.primary,
-        fontWeight: 'bold',
-        marginRight: 4,
+        fontSize: 18,
+        fontWeight: '800',
+        marginBottom: 6,
+        marginRight: 8,
     },
     budgetInput: {
         color: colors.white,
-        fontSize: 16,
-        fontWeight: 'bold',
-        minWidth: 60,
-        textAlign: 'right',
+        fontSize: 38,
+        fontWeight: '900',
+        padding: 0,
+        height: 45,
     },
-    budgetSubtitle: {
-        color: colors.neutral400,
-        fontSize: 14,
-        marginTop: 4,
-        marginBottom: 10,
+    budgetVisual: {
+        marginTop: 15,
     },
-    categoryContainer: {
-        marginBottom: 16,
+    progressTrack: {
+        height: 6,
+        backgroundColor: colors.neutral800,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: colors.primary,
+    },
+    categoryScroll: {
+        marginBottom: 20,
     },
     categoryChip: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: colors.neutral800,
-        borderRadius: 20,
-        marginRight: 8,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        backgroundColor: colors.neutral900,
+        borderRadius: 15,
+        marginRight: 10,
         borderWidth: 1,
-        borderColor: colors.neutral700,
+        borderColor: colors.neutral800,
     },
     categoryChipActive: {
         backgroundColor: colors.primary,
@@ -575,61 +359,167 @@ const styles = StyleSheet.create({
     },
     categoryChipTextActive: {
         color: colors.neutral900,
-        fontWeight: 'bold',
+        fontWeight: '800',
+    },
+    searchContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: colors.neutral900,
+        borderRadius: 18,
+        paddingHorizontal: 15,
+        marginBottom: 25,
+        height: 54,
+        borderWidth: 1,
+        borderColor: colors.neutral800,
+    },
+    searchInput: {
+        flex: 1,
+        color: colors.white,
+        fontSize: 16,
+        marginLeft: 10,
+    },
+    listContent: {
+        paddingBottom: 100,
+    },
+    card: {
+        backgroundColor: colors.neutral900,
+        borderRadius: 28,
+        marginHorizontal: 20,
+        marginBottom: 16,
+        padding: 16,
+        flexDirection: "row",
+        height: 160,
+        borderWidth: 1,
+        borderColor: colors.neutral800,
+    },
+    image: {
+        width: 100,
+        height: "100%",
+        borderRadius: 18,
+        backgroundColor: '#1A1A1A',
+    },
+    cardContent: {
+        flex: 1,
+        paddingLeft: 16,
+        justifyContent: "space-between",
     },
     categoryBadge: {
-        backgroundColor: colors.neutral800,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         alignSelf: 'flex-start',
-        paddingHorizontal: 8,
+        paddingHorizontal: 10,
         paddingVertical: 4,
-        borderRadius: 6,
-        marginBottom: 8,
-        borderWidth: 1,
-        borderColor: colors.neutral700,
+        borderRadius: 8,
+        marginBottom: 6,
     },
     categoryText: {
         color: colors.primary,
         fontSize: 10,
-        fontWeight: 'bold',
+        fontWeight: '800',
         textTransform: 'uppercase',
     },
-    // New Styles for Wealth Banner
-    wealthBanner: {
-        backgroundColor: colors.primary,
+    productName: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: colors.white,
+        lineHeight: 22,
+    },
+    priceRow: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        padding: 20,
-        borderRadius: 20,
-        marginBottom: 25,
+        alignItems: 'flex-end',
+    },
+    priceLabel: {
+        color: colors.neutral500,
+        fontSize: 10,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    productPrice: {
+        fontSize: 18,
+        fontWeight: "900",
+        color: colors.white,
+    },
+    buyButton: {
+        backgroundColor: colors.primary,
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        alignItems: "center",
+        justifyContent: "center",
         shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 6,
+        shadowRadius: 6,
+        elevation: 5,
     },
-    wealthContent: {
-        flexDirection: 'row',
+    loadingContainer: {
         alignItems: 'center',
-        gap: 15,
+        paddingVertical: 40,
     },
-    wealthIconBox: {
-        width: 45,
-        height: 45,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
-        borderRadius: 12,
+    loadingText: {
+        color: colors.neutral500,
+        marginTop: 15,
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    emptyContainer: {
+        alignItems: 'center',
+        paddingHorizontal: 40,
+        paddingVertical: 60,
+    },
+    emptyIconCircle: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: colors.neutral900,
         alignItems: 'center',
         justifyContent: 'center',
+        marginBottom: 20,
     },
-    wealthTitle: {
-        fontSize: 16,
+    emptyTitle: {
+        color: colors.white,
+        fontSize: 20,
         fontWeight: '800',
-        color: colors.neutral900,
-        marginBottom: 2,
+        marginBottom: 8,
     },
-    wealthSubtitle: {
-        fontSize: 12,
+    emptyDesc: {
+        color: colors.neutral500,
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 25,
+    },
+    googleButton: {
+        flexDirection: 'row',
+        backgroundColor: colors.neutral800,
+        paddingHorizontal: 25,
+        paddingVertical: 14,
+        borderRadius: 16,
+        alignItems: "center",
+        gap: 10,
+    },
+    googleButtonText: {
+        color: colors.white,
+        fontWeight: "700",
+        fontSize: 15,
+    },
+    footer: {
+        alignItems: 'center',
+        paddingTop: 10,
+        paddingBottom: 30,
+    },
+    refreshBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.neutral900,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        gap: 6,
+    },
+    refreshText: {
+        color: colors.neutral500,
+        fontSize: 11,
         fontWeight: '600',
-        color: colors.neutral800,
-    },
+    }
 });

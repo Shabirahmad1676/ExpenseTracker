@@ -1,13 +1,12 @@
 /**
- * MARKET SCRAPER SCRIPT 🕷️
- * * Usage: node /home/node/scripts/scrape_market.js
+ * CATALOG SCRAPER SCRIPT 🕷️
+ * Usage: node /home/node/scripts/scrape_market.js
  */
 
 const puppeteer = require('puppeteer');
 const admin = require('firebase-admin');
 require('dotenv').config();
 
-// --- CONFIGURATION ---
 const SERVICE_ACCOUNT_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS || '/home/node/scripts/service-account.json';
 
 async function initFirebase() {
@@ -20,26 +19,22 @@ async function initFirebase() {
         }
     } catch (error) {
         console.warn(`⚠️ Could not init Firebase: ${error.message}`);
-        console.warn("   Running in DRY RUN mode (no database writes).");
         return false;
     }
     return true;
 }
 
-async function scrapeMarket() {
-    console.log(`\n--- Starting Scraper at ${new Date().toLocaleString()} ---`);
+async function scrapeCatalog() {
+    console.log(`\n--- Starting Catalog Scraper at ${new Date().toLocaleString()} ---`);
     const hasDb = await initFirebase();
     let browser;
 
     try {
-        // 1. Launch Browser (CRITICAL DOCKER FIXES ADDED HERE)
-        console.log("Launching Chromium inside Docker...");
-        // 1. Launch Browser (CRITICAL DOCKER FIXES ADDED HERE)
         console.log("Launching Chromium inside Docker...");
         browser = await puppeteer.launch({
             executablePath: '/usr/bin/chromium-browser',
-            headless: true, // Changed from "new" to true for Alpine compatibility
-            pipe: true,     // <--- THE MAGIC FIX: Bypasses the WebSocket timeout completely
+            headless: true,
+            pipe: true,
             dumpio: true,
             args: [
                 '--no-sandbox',
@@ -48,78 +43,82 @@ async function scrapeMarket() {
                 '--disable-gpu',
                 '--disable-software-rasterizer',
                 '--disable-dev-tools',
-                '--disable-features=dbus' // <--- Stops Chromium from looking for a desktop environment
+                '--disable-features=dbus'
             ]
         });
         const page = await browser.newPage();
 
-        // 2. Fetch Products to Scrape
-        let products = [];
-        if (hasDb) {
-            try {
-                console.log("Fetching products from Firestore...");
-                const snapshot = await admin.firestore().collection('market_products').get();
-                products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                console.log(`Fetched ${products.length} products.`);
-            } catch (e) {
-                console.error("Error fetching from Firestore:", e);
-            }
-        }
+        // 1. Visit the main Category Page instead of individual products
+        const targetUrl = 'https://priceoye.pk/mobiles';
+        console.log(`\n🕷️ Visiting Category Page: ${targetUrl}`);
 
-        // Fallback Mock Data
-        if (products.length === 0) {
-            console.log("Using Mock Data (DB empty or not connected)");
-            products = [
-                { id: "mock_123", name: "Mock ITEL", productUrl: 'https://priceoye.pk/mobiles/itel/itel-super-s26-ultra' }
-            ];
-        }
+        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // 3. Iterate and Scrape
-        for (const product of products) {
-            if (!product.productUrl) continue;
+        // 2. Scrape the entire grid of products in one go
+        console.log("Extracting product grid...");
+        const scrapedProducts = await page.evaluate(() => {
+            const products = [];
+            // Note: These selectors (.productBox, .p-title, .price-box) are generic guesses. 
+            // We may need to inspect the live website to get the exact HTML classes!
+            const productCards = document.querySelectorAll('.productBox, .product-item, [data-product-id]');
 
-            console.log(`\n🕷️ Visiting: ${product.name}`);
-            try {
-                await page.goto(product.productUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+            productCards.forEach(card => {
+                const nameEl = card.querySelector('.p-title, .product-name, h3');
+                const priceEl = card.querySelector('.price-box, .price, .summary-price');
+                const linkEl = card.querySelector('a');
 
-                await page.waitForSelector('.summary-price', { timeout: 5000 })
-                    .catch(() => console.log("⚠️ `.summary-price` element didn't load in time, trying fallback..."));
+                const imgEl = card.querySelector('img');
+                const imageUrl = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null;
 
-                const priceText = await page.evaluate(() => {
-                    const meta = document.querySelector('meta[property="product:price:amount"]');
-                    if (meta) return meta.content;
-
-                    const el = document.querySelector('.summary-price');
-                    return el ? el.innerText.replace(/,/g, '').trim() : null;
-                });
-
-                if (priceText) {
-                    // This Regex strips out EVERYTHING except raw numbers
-                    const cleanPriceString = String(priceText).replace(/[^0-9]/g, '');
-                    const price = parseInt(cleanPriceString, 10);
-
-                    // Make sure it's actually a valid number before saving to DB
-                    if (!isNaN(price) && price > 0) {
-                        console.log(`✅ Price found: Rs ${price}`);
-
-                        if (hasDb && product.id !== "mock_123") {
-                            await admin.firestore().collection('market_products').doc(product.id).update({
-                                price: price,
-                                lastUpdated: new Date().toISOString()
-                            });
-                            console.log("💾 Database Updated");
-                        }
-                    } else {
-                        console.log(`❌ Found text, but couldn't parse number from: ${priceText}`);
-                    }
-                } else {
-                    console.log("❌ Could not find price on page.");
+                if (nameEl && priceEl) {
+                    products.push({
+                        name: nameEl.innerText.trim(),
+                        priceText: priceEl.innerText.trim(),
+                        productUrl: linkEl ? linkEl.href : null,
+                        imageUrl: imageUrl,
+                    });
                 }
+            });
+            return products;
+        });
 
-            } catch (err) {
-                console.error(`⚠️ Failed to scrape ${product.name}: ${err.message}`);
+        console.log(`🎉 Discovered ${scrapedProducts.length} products on the page!`);
+
+        // 3. Clean the data and push to Firebase
+        if (scrapedProducts.length > 0 && hasDb) {
+            const batch = admin.firestore().batch();
+            const collectionRef = admin.firestore().collection('market_products');
+            let validCount = 0;
+
+            for (const item of scrapedProducts) {
+                // Strip the "Rs" and commas
+                const cleanPriceString = String(item.priceText).replace(/[^0-9]/g, '');
+                const price = parseInt(cleanPriceString, 10);
+
+                if (!isNaN(price) && price > 0) {
+                    // Create a safe document ID from the product name (e.g., "iphone-15-pro")
+                    const safeId = item.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+
+                    const docRef = collectionRef.doc(safeId);
+
+                    // Merge: true is critical! It creates the product if it's new, or just updates it if it exists
+                    batch.set(docRef, {
+                        name: item.name,
+                        price: price,
+                        productUrl: item.productUrl,
+                        imageUrl: item.imageUrl || null,
+                        lastUpdated: new Date().toISOString()
+                    }, { merge: true });
+
+                    validCount++;
+                }
             }
+
+            console.log(`💾 Committing ${validCount} clean products to Firestore in one batch...`);
+            await batch.commit();
+            console.log("✅ Database successfully updated with entire catalog!");
         }
+
     } catch (fatalError) {
         console.error("❌ Fatal Scraper Error:", fatalError);
     } finally {
@@ -127,12 +126,9 @@ async function scrapeMarket() {
             await browser.close();
             console.log("🗑️ Browser closed safely.");
         }
-        console.log("🎉 Scraping Run Complete.\n");
-
-        // CRITICAL FIX: Tell the n8n Execute Command node that the script is 100% finished
+        console.log("🎉 Catalog Scraping Run Complete.\n");
         process.exit(0);
     }
 }
 
-// INSTANTLY RUN THE FUNCTION INSTEAD OF WAITING FOR CRON
-scrapeMarket();
+scrapeCatalog();
