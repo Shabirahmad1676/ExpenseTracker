@@ -105,8 +105,12 @@ export const parseProductDetails = async (htmlChunk: string) => {
     }
 };
 
-export const getChatResponse = async (messages: any[], context: { balance: number, recentTransactions: any[] }) => {
+export const getChatResponse = async (messages: any[], context: { balance: number, recentTransactions: any[], goals?: any[] }) => {
     try {
+        const goalsContext = context.goals && context.goals.length > 0
+            ? `Active Financial Goals: ${JSON.stringify(context.goals.map(g => ({ name: g.name, target: g.targetPrice })))}`
+            : "No active financial goals set.";
+
         const systemPrompt = `
             You are Montra AI, a personal financial assistant for the Expense Tracker app.
             Your goal is to help users manage their money, provide spending insights, and offer budgeting advice.
@@ -114,6 +118,7 @@ export const getChatResponse = async (messages: any[], context: { balance: numbe
             Current Financial Context:
             - Current Balance: PKR ${context.balance.toLocaleString()}
             - Recent Transactions: ${JSON.stringify(context.recentTransactions)}
+            - ${goalsContext}
             
             Instructions:
             1. Be helpful, professional, and empathetic.
@@ -121,6 +126,7 @@ export const getChatResponse = async (messages: any[], context: { balance: numbe
             3. Keep advice practical and locally relevant (Pakistan context).
             4. Use PKR for all currency references.
             5. If asked about buying something, recommend checking the "Market" tab.
+            6. CRITICAL: If a user has a goal, proactively offer advice on how to reach it faster based on their current balance and transactions.
         `;
 
         const completion = await groq.chat.completions.create({

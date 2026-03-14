@@ -171,3 +171,27 @@
 //   uid?: string;
 //   created?: Date;
 // };
+
+export type MarketProductType = {
+  id?: string;
+  name: string;
+  price: number;
+  productUrl: string;
+  imageUrl?: string | null;
+  lastUpdated: string;
+};
+
+export type GoalType = {
+  id?: string;
+  uid: string;
+  title: string;
+  targetAmount: number;     // The price the user wants to hit
+  savedAmount: number;      // How much they've allocated
+  marketPrice?: number;     // Optional: The current real-world price from scraper
+  targetDate: string;       // ISO Date string
+  createdAt: string;        // ISO Date string
+  status: 'active' | 'completed' | 'paused';
+  category: string;         // e.g., 'mobiles', 'washing-machines'
+  imageUrl?: string;
+  lastPriceUpdate?: string; // When the scraper last checked this specific goal's item
+};

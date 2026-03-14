@@ -31,6 +31,9 @@ export default function TabsLayout() {
             case "Wallet":
               iconName = focused ? "wallet" : "wallet-outline";
               break;
+            // case "Goals":
+            //   iconName = focused ? "flag" : "flag-outline";
+            //   break;
             case "Market":
               iconName = focused ? "cart" : "cart-outline";
               break;
@@ -45,6 +48,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="Wallet" options={{ title: "Wallet" }} />
+      <Tabs.Screen name="Goals" options={{ title: "Goals" }} />
       <Tabs.Screen name="Assistant" options={{ title: "AI" }} />
       <Tabs.Screen name="Market" options={{ title: "Market" }} />
       <Tabs.Screen name="Profile" options={{ title: "Profile" }} />

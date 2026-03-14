@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { memo, useEffect, useMemo, useState } from "react";
+import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -24,7 +24,7 @@ import { useProductDiscovery } from "../../hooks/useProductDiscovery";
 const CATEGORIES = ["All", "Mobile", "Laptop", "Audio"];
 
 // ✅ PERFORMANCE: Memoized Product Card
-const ProductCard = memo(({ item, index, onBuy }) => (
+const ProductCard = memo(({ item, index, onBuy, onSetGoal }) => (
     <Animated.View
         entering={FadeInDown.delay(Math.min(index * 50, 500)).duration(400)}
         style={styles.card}
@@ -46,12 +46,20 @@ const ProductCard = memo(({ item, index, onBuy }) => (
                     <Text style={styles.priceLabel}>Current Price</Text>
                     <Text style={styles.productPrice}>PKR {item.price.toLocaleString()}</Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.buyButton}
-                    onPress={() => onBuy(item)}
-                >
-                    <Ionicons name="cart-outline" size={18} color={colors.neutral900} />
-                </TouchableOpacity>
+                <View style={styles.actionRow}>
+                    <TouchableOpacity
+                        style={styles.goalButton}
+                        onPress={() => onSetGoal(item)}
+                    >
+                        <Ionicons name="flag-outline" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.buyButton}
+                        onPress={() => onBuy(item)}
+                    >
+                        <Ionicons name="cart-outline" size={18} color={colors.neutral900} />
+                    </TouchableOpacity>
+                </View>
             </View>
         </View>
     </Animated.View>
@@ -112,6 +120,30 @@ export default function Market() {
         }
     }, []);
 
+    const handleSetGoal = useCallback(async (item) => {
+        const user = auth.currentUser;
+        if (!user) {
+            Alert.alert("Login Required", "Please login to set financial goals.");
+            return;
+        }
+
+        try {
+            await addDoc(collection(firestore, "goals"), {
+                uid: user.uid,
+                name: item.name,
+                targetPrice: item.price,
+                imageUrl: item.imageUrl || item.image || null,
+                productUrl: item.productUrl || null,
+                status: 'active',
+                createdAt: serverTimestamp()
+            });
+            Alert.alert("Goal Set! 🎯", `We've added ${item.name} to your savings goals. Montra AI will help you track it!`);
+        } catch (error) {
+            console.error("Error setting goal:", error);
+            Alert.alert("Error", "Could not save your goal. Please try again.");
+        }
+    }, []);
+
     const filteredProducts = useMemo(() => {
         if (!affordablePhones) return [];
         return affordablePhones.filter((item) =>
@@ -120,8 +152,8 @@ export default function Market() {
     }, [affordablePhones, searchQuery]);
 
     const renderItem = useCallback(({ item, index }) => (
-        <ProductCard item={item} index={index} onBuy={handleBuy} />
-    ), [handleBuy]);
+        <ProductCard item={item} index={index} onBuy={handleBuy} onSetGoal={handleSetGoal} />
+    ), [handleBuy, handleSetGoal]);
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
@@ -438,6 +470,20 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: "900",
         color: colors.white,
+    },
+    actionRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    goalButton: {
+        backgroundColor: colors.neutral800,
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: colors.neutral700,
     },
     buyButton: {
         backgroundColor: colors.primary,

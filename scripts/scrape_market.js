@@ -24,18 +24,18 @@ async function initFirebase() {
     return true;
 }
 
-async function scrapeCatalog() {
-    console.log(`\n--- Starting Catalog Scraper at ${new Date().toLocaleString()} ---`);
+async function scrapeCatalog(category, targetUrl) {
+    console.log(`\n--- Starting Scraper for [${category}] at ${new Date().toLocaleString()} ---`);
     const hasDb = await initFirebase();
     let browser;
 
     try {
-        console.log("Launching Chromium inside Docker...");
+        console.log("Launching Chromium...");
         browser = await puppeteer.launch({
             executablePath: '/usr/bin/chromium-browser',
             headless: true,
             pipe: true,
-            dumpio: true,
+            dumpio: false, // Cleaner logs
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -47,26 +47,19 @@ async function scrapeCatalog() {
             ]
         });
         const page = await browser.newPage();
-
-        // 1. Visit the main Category Page instead of individual products
-        const targetUrl = 'https://priceoye.pk/mobiles';
-        console.log(`\n🕷️ Visiting Category Page: ${targetUrl}`);
+        console.log(`🕷️ Visiting Category Page: ${targetUrl}`);
 
         await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // 2. Scrape the entire grid of products in one go
-        console.log("Extracting product grid...");
+        // Scrape the grid
         const scrapedProducts = await page.evaluate(() => {
             const products = [];
-            // Note: These selectors (.productBox, .p-title, .price-box) are generic guesses. 
-            // We may need to inspect the live website to get the exact HTML classes!
             const productCards = document.querySelectorAll('.productBox, .product-item, [data-product-id]');
 
             productCards.forEach(card => {
                 const nameEl = card.querySelector('.p-title, .product-name, h3');
                 const priceEl = card.querySelector('.price-box, .price, .summary-price');
                 const linkEl = card.querySelector('a');
-
                 const imgEl = card.querySelector('img');
                 const imageUrl = imgEl ? (imgEl.src || imgEl.getAttribute('data-src')) : null;
 
@@ -82,29 +75,25 @@ async function scrapeCatalog() {
             return products;
         });
 
-        console.log(`🎉 Discovered ${scrapedProducts.length} products on the page!`);
+        console.log(`🎉 Discovered ${scrapedProducts.length} products in ${category}!`);
 
-        // 3. Clean the data and push to Firebase
         if (scrapedProducts.length > 0 && hasDb) {
             const batch = admin.firestore().batch();
             const collectionRef = admin.firestore().collection('market_products');
             let validCount = 0;
 
             for (const item of scrapedProducts) {
-                // Strip the "Rs" and commas
                 const cleanPriceString = String(item.priceText).replace(/[^0-9]/g, '');
                 const price = parseInt(cleanPriceString, 10);
 
                 if (!isNaN(price) && price > 0) {
-                    // Create a safe document ID from the product name (e.g., "iphone-15-pro")
                     const safeId = item.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-
                     const docRef = collectionRef.doc(safeId);
 
-                    // Merge: true is critical! It creates the product if it's new, or just updates it if it exists
                     batch.set(docRef, {
                         name: item.name,
                         price: price,
+                        category: category,
                         productUrl: item.productUrl,
                         imageUrl: item.imageUrl || null,
                         lastUpdated: new Date().toISOString()
@@ -114,21 +103,31 @@ async function scrapeCatalog() {
                 }
             }
 
-            console.log(`💾 Committing ${validCount} clean products to Firestore in one batch...`);
+            console.log(`💾 Committing ${validCount} products to Firestore...`);
             await batch.commit();
-            console.log("✅ Database successfully updated with entire catalog!");
+            console.log(`✅ ${category} updated!`);
         }
 
     } catch (fatalError) {
-        console.error("❌ Fatal Scraper Error:", fatalError);
+        console.error(`❌ Fatal Error in ${category}:`, fatalError);
     } finally {
-        if (browser) {
-            await browser.close();
-            console.log("🗑️ Browser closed safely.");
-        }
-        console.log("🎉 Catalog Scraping Run Complete.\n");
-        process.exit(0);
+        if (browser) await browser.close();
     }
 }
 
-scrapeCatalog();
+async function runAll() {
+    const categories = [
+        { name: 'mobiles', url: 'https://priceoye.pk/mobiles' },
+        { name: 'washing-machines', url: 'https://priceoye.pk/washing-machines' },
+        { name: 'air-conditioners', url: 'https://priceoye.pk/air-conditioners' },
+        { name: 'tablets', url: 'https://priceoye.pk/tablets' }
+    ];
+
+    for (const cat of categories) {
+        await scrapeCatalog(cat.name, cat.url);
+    }
+    console.log("\n🚀 All categories processed.");
+    process.exit(0);
+}
+
+runAll();

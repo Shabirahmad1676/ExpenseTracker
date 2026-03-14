@@ -36,6 +36,7 @@ WORKDIR /home/node/scripts
 # Copy our scraper and package files
 COPY package.json .
 COPY scripts/scrape_market.js .
+COPY scripts/goal_checker.js .
 
 # Install dependencies in the image
 RUN npm install puppeteer firebase-admin dotenv
