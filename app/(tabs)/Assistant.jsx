@@ -36,23 +36,22 @@ export default function Assistant() {
     ]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
-    const [financialData, setFinancialData] = useState({ balance: 0, recentTransactions: [] });
+    const [financialData, setFinancialData] = useState({ balance: 0, recentTransactions: [], goals: [] });
 
     const flatListRef = useRef(null);
 
-    // --- FETCH FINANCIAL CONTEXT ---
+    // --- FETCH FINANCIAL CONTEXT (Transactions & Goals) ---
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) return;
 
-        // Note: Removed orderBy and limit to get FULL balance (like Market.jsx)
-        // and to avoid "Missing Index" errors in Firestore.
-        const q = query(
+        // 1. Listen to Transactions
+        const qTx = query(
             collection(firestore, "transactions"),
             where("uid", "==", user.uid)
         );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribeTx = onSnapshot(qTx, (snapshot) => {
             let totalIncome = 0;
             let totalExpense = 0;
             const allTransactions = [];
@@ -73,19 +72,37 @@ export default function Assistant() {
                 else totalExpense += Number(data.amount);
             });
 
-            // Sort in memory to get the most recent ones for the AI context
             const sortedRecent = [...allTransactions]
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
                 .slice(0, 10)
-                .map(({ id, ...rest }) => rest); // Clean ID for AI context
+                .map(({ id, ...rest }) => rest);
 
-            setFinancialData({
+            setFinancialData(prev => ({
+                ...prev,
                 balance: totalIncome - totalExpense,
                 recentTransactions: sortedRecent
-            });
+            }));
         });
 
-        return unsubscribe;
+        // 2. Listen to Goals
+        const qGoals = query(
+            collection(firestore, "goals"),
+            where("uid", "==", user.uid),
+            where("status", "==", "active")
+        );
+
+        const unsubscribeGoals = onSnapshot(qGoals, (snapshot) => {
+            const goals = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setFinancialData(prev => ({ ...prev, goals }));
+        });
+
+        return () => {
+            unsubscribeTx();
+            unsubscribeGoals();
+        };
     }, []);
 
     const sendMessage = async (text) => {
@@ -172,6 +189,33 @@ export default function Assistant() {
                     keyExtractor={(item) => item.id}
                     renderItem={renderMessage}
                     contentContainerStyle={styles.chatList}
+                    ListHeaderComponent={() => (
+                        financialData.goals.length > 0 && (
+                            <Animated.View
+                                entering={FadeInUp.delay(200)}
+                                style={styles.goalContainer}
+                            >
+                                <Text style={styles.goalSectionTitle}>Your Saving Goals 🎯</Text>
+                                {financialData.goals.map(goal => {
+                                    const progress = Math.min(financialData.balance / goal.targetPrice, 1);
+                                    return (
+                                        <View key={goal.id} style={styles.goalCard}>
+                                            <View style={styles.goalInfo}>
+                                                <Text style={styles.goalName} numberOfLines={1}>{goal.name}</Text>
+                                                <Text style={styles.goalAmount}>
+                                                    PKR {financialData.balance.toLocaleString()} / {goal.targetPrice.toLocaleString()}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.progressBarBg}>
+                                                <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+                                            </View>
+                                            <Text style={styles.progressText}>{Math.round(progress * 100)}% saved</Text>
+                                        </View>
+                                    );
+                                })}
+                            </Animated.View>
+                        )
+                    )}
                     showsVerticalScrollIndicator={false}
                     ListFooterComponent={
                         loading && (
@@ -356,5 +400,60 @@ const styles = StyleSheet.create({
     },
     sendButtonDisabled: {
         backgroundColor: colors.neutral800,
+    },
+    goalContainer: {
+        marginBottom: 20,
+    },
+    goalSectionTitle: {
+        color: colors.neutral500,
+        fontSize: 12,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 10,
+    },
+    goalCard: {
+        backgroundColor: colors.neutral900,
+        borderRadius: 16,
+        padding: 15,
+        borderWidth: 1,
+        borderColor: colors.neutral800,
+        marginBottom: 8,
+    },
+    goalInfo: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    goalName: {
+        color: colors.white,
+        fontSize: 14,
+        fontWeight: '700',
+        flex: 1,
+        marginRight: 10,
+    },
+    goalAmount: {
+        color: colors.neutral400,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    progressBarBg: {
+        height: 6,
+        backgroundColor: colors.neutral800,
+        borderRadius: 3,
+        overflow: 'hidden',
+        marginBottom: 6,
+    },
+    progressBarFill: {
+        height: '100%',
+        backgroundColor: colors.primary,
+        borderRadius: 3,
+    },
+    progressText: {
+        color: colors.primary,
+        fontSize: 10,
+        fontWeight: '800',
+        textAlign: 'right',
     },
 });
