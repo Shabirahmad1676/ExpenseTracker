@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../constants/theme';
+import { Colors, typography } from '../constants/theme';
 import InvestmentCard from './InvestmentCard';
 import SavingsGoal from './SavingsGoal';
 
@@ -30,13 +30,10 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 15,
-        paddingHorizontal: 0,
     },
     sectionTitle: {
+        ...typography.subHeader,
         fontSize: 18,
-        fontWeight: "700",
-        color: colors.white,
-        letterSpacing: 0.5,
     },
     cardsContainer: {
         gap: 15,

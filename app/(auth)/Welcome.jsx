@@ -1,6 +1,6 @@
 import { View, Text, Image, StyleSheet } from "react-native";
 import React, { useEffect } from "react";
-import { colors, spacingX, spacingY, radius } from "../../constants/theme";
+import { Colors, spacingX, spacingY, radius, typography } from "../../constants/theme";
 import { useRouter } from "expo-router";
 import CustomButton from "../../components/CustomButton";
 import Animated, {
@@ -54,13 +54,13 @@ const Welcome = () => {
           title="Sign In"
           variant="outline"
           onPress={() => router.push("/(auth)/Register")}
-          style={{ paddingHorizontal: 20, paddingVertical: 10 }}
-          textStyle={{ fontSize: 14 }}
+          style={{ paddingHorizontal: 20, paddingVertical: 10, borderColor: Colors.primary }}
+          textStyle={{ fontSize: 14, color: Colors.primary }}
         />
       </View>
 
       <Animated.Image
-      entering={FadeIn.duration(500)}
+        entering={FadeIn.duration(500)}
         style={[styles.illustration, imageStyle]}
         source={require("../../assets/images/welcome.png")}
       />
@@ -84,10 +84,11 @@ const Welcome = () => {
             onPress={() => router.push("/(auth)/Login")}
             style={{
               paddingHorizontal: 20,
-              paddingVertical: 10,
-              backgroundColor: "#a3e635",
+              paddingVertical: 15,
+              backgroundColor: Colors.primary,
+              borderRadius: 16,
             }}
-            textStyle={{ fontSize: 14 }}
+            textStyle={{ fontSize: 16, fontWeight: '700' }}
           />
         </Animated.View>
       </Animated.View>
@@ -100,8 +101,7 @@ export default Welcome;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral900,
-
+    backgroundColor: Colors.surface,
   },
   headerAction: {
     position: "absolute",
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   },
   illustration: {
     alignSelf: "center",
-    width:300,
+    width: 300,
     height: 300,
     resizeMode: "contain",
     marginTop: spacingY._60,
@@ -121,28 +121,34 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.neutral800,
+    backgroundColor: 'white',
     paddingHorizontal: spacingX._25,
     paddingTop: spacingY._25,
-    paddingBottom: spacingY._30,
+    paddingBottom: spacingY._40,
     borderTopLeftRadius: radius._30,
     borderTopRightRadius: radius._30,
+    elevation: 20,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
   },
   titleWrap: {
     marginBottom: spacingY._15,
   },
   title: {
-    color: colors.text,
+    ...typography.header,
     fontSize: 28,
     textAlign: "center",
-    fontWeight: "700",
+    color: Colors.textPrimary,
   },
   subtitleWrap: {
-    marginBottom: spacingY._25,
+    marginBottom: spacingY._30,
   },
   subtitle: {
+    ...typography.bodySecondary,
     textAlign: "center",
-    color: colors.textLight,
-    fontSize: 14,
+    color: Colors.textSecondary,
+    fontSize: 15,
   },
 });

@@ -1,8 +1,6 @@
 import React from "react";
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from "react-native";
-import { colors } from "../constants/theme";
-
-
+import { TouchableOpacity, Text, StyleSheet } from "react-native";
+import { Colors } from "../constants/theme";
 
 const CustomButton = ({ title, onPress, style, textStyle, variant = "solid" }) => {
   return (
@@ -31,26 +29,27 @@ export default CustomButton;
 
 const styles = StyleSheet.create({
   base: {
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingVertical: 14,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   solid: {
-    backgroundColor: colors.primary, // replace with your colors.primary
+    backgroundColor: Colors.primary,
   },
   outline: {
-    borderWidth: 1,
-    borderColor: "#888",
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
     backgroundColor: "transparent",
   },
   text: {
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 16,
   },
   solidText: {
-    color: "#000",
+    color: "#fff",
   },
   outlineText: {
-    color: "#fff",
+    color: Colors.primary,
   },
 });

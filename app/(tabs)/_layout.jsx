@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { colors } from "../../constants/theme";
+import { Colors, styles } from "../../constants/theme";
 
 export default function TabsLayout() {
   return (
@@ -8,15 +8,20 @@ export default function TabsLayout() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarActiveTintColor: colors.green,
-        tabBarInactiveTintColor: colors.textLight,
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.textSecondary,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: colors.neutral800,
+          backgroundColor: Colors.background,
           borderTopWidth: 0,
-          elevation: 0,
-          height: 60,
-          paddingBottom: 8,
+          elevation: 5,
+          height: 70,
+          paddingBottom: 10,
+          ...styles.shadow
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          marginTop: -5,
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName = "home";
@@ -31,9 +36,6 @@ export default function TabsLayout() {
             case "Wallet":
               iconName = focused ? "wallet" : "wallet-outline";
               break;
-            // case "Goals":
-            //   iconName = focused ? "flag" : "flag-outline";
-            //   break;
             case "Market":
               iconName = focused ? "cart" : "cart-outline";
               break;
@@ -48,10 +50,9 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="Wallet" options={{ title: "Wallet" }} />
-      <Tabs.Screen name="Goals" options={{ title: "Goals" }} />
       <Tabs.Screen name="Assistant" options={{ title: "AI" }} />
       <Tabs.Screen name="Market" options={{ title: "Market" }} />
-      <Tabs.Screen name="Profile" options={{ title: "Profile" }} />
+      <Tabs.Screen name="Profile" options={{ title: "Profile", href: "/Profile" }} />
       <Tabs.Screen name="Statistic" options={{ title: "Statistic", href: null }} />
     </Tabs>
   );

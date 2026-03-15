@@ -2,7 +2,7 @@ import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View, ScrollView } from 'react-native';
 import { auth, firestore } from '../config/firebase';
-import { colors } from '../constants/theme';
+import { Colors, typography } from '../constants/theme';
 import { parseProductDetails } from '../services/aiService';
 
 const CATEGORIES = [
@@ -24,8 +24,6 @@ export default function SavingsGoal({ onClose }) {
         setLoading(true);
 
         try {
-            // 1. Try to find the product in our local 'market_products' collection first
-            // This is much more reliable than client-side scraping
             const marketRef = collection(firestore, "market_products");
             const q = query(marketRef, where("productUrl", "==", url));
             const querySnapshot = await getDocs(q);
@@ -40,8 +38,6 @@ export default function SavingsGoal({ onClose }) {
                 return;
             }
 
-            // 2. Fallback: Try a direct fetch (might fail due to CORS/IP blocks)
-            console.log("Product not in DB, attempting direct fetch...");
             const response = await fetch(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36'
@@ -57,26 +53,16 @@ export default function SavingsGoal({ onClose }) {
                     image: data.image || "https://placehold.co/400"
                 });
             } else {
-                Alert.alert(
-                    "Scan Failed", 
-                    "Could not find this product in our database or via scan. Would you like to enter it manually?",
-                    [
-                        { text: "Cancel", style: "cancel" },
-                        { text: "Manual Entry", onPress: () => setScrapedData({ name: "New Goal", price: 0, image: "https://placehold.co/400" }) }
-                    ]
-                );
+                Alert.alert("Scan Failed", "Could not find this product. Try manual entry.", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Manual Entry", onPress: () => setScrapedData({ name: "New Goal", price: 0, image: "https://placehold.co/400" }) }
+                ]);
             }
         } catch (error) {
-            console.error("Scrape Error:", error);
-            // On error, offer manual entry
-            Alert.alert(
-                "Network Error", 
-                "PriceOye blocked the direct scan, but you can still set this goal manually.",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Manual Entry", onPress: () => setScrapedData({ name: "My Goal", price: 1000, image: "https://placehold.co/400" }) }
-                ]
-            );
+            Alert.alert("Network Error", "Scan failed. You can still set this goal manually.", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Manual Entry", onPress: () => setScrapedData({ name: "My Goal", price: 1000, image: "https://placehold.co/400" }) }
+            ]);
         } finally {
             setLoading(false);
         }
@@ -102,13 +88,12 @@ export default function SavingsGoal({ onClose }) {
             Alert.alert("Success", "Savings Goal Added!");
             onClose();
         } catch (error) {
-            console.error("Save Goal Error:", error);
             Alert.alert("Error", "Could not save goal");
         }
     };
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 20 }}>
+        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
             <Text style={styles.title}>New Sinking Fund</Text>
             <Text style={styles.subtitle}>Track prices & save toward your goal.</Text>
 
@@ -132,7 +117,7 @@ export default function SavingsGoal({ onClose }) {
                 value={monthsToSave}
                 onChangeText={setMonthsToSave}
                 placeholder="How many months?"
-                placeholderTextColor={colors.neutral400}
+                placeholderTextColor={Colors.textSecondary}
             />
 
             <Text style={styles.label}>Product Link</Text>
@@ -140,12 +125,12 @@ export default function SavingsGoal({ onClose }) {
                 <TextInput
                     style={styles.input}
                     placeholder="Paste PriceOye URL..."
-                    placeholderTextColor={colors.neutral400}
+                    placeholderTextColor={Colors.textSecondary}
                     value={url}
                     onChangeText={setUrl}
                 />
                 <TouchableOpacity style={styles.goButton} onPress={fetchProductDetails} disabled={loading}>
-                    {loading ? <ActivityIndicator color="black" /> : <Text style={styles.btnText}>Scan</Text>}
+                    {loading ? <ActivityIndicator color="white" /> : <Text style={styles.goBtnText}>Scan</Text>}
                 </TouchableOpacity>
             </View>
 
@@ -170,72 +155,66 @@ export default function SavingsGoal({ onClose }) {
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: colors.neutral800,
-        padding: 20,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: colors.neutral700,
-        maxHeight: '90%'
+        backgroundColor: 'white',
+        borderRadius: 24,
+        maxHeight: '90%',
     },
-    title: { color: 'white', fontSize: 20, fontWeight: 'bold' },
-    subtitle: { color: colors.neutral400, fontSize: 13, marginBottom: 20 },
-    label: { color: colors.neutral300, fontSize: 12, marginBottom: 8, marginTop: 15, fontWeight: '600' },
+    content: { padding: 24, paddingBottom: 40 },
+    title: { ...typography.header, fontSize: 22 },
+    subtitle: { ...typography.caption, marginBottom: 20 },
+    label: { ...typography.caption, color: Colors.textPrimary, fontWeight: '700', marginTop: 20, marginBottom: 10 },
     categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     catButton: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        backgroundColor: colors.neutral900,
-        borderWidth: 1,
-        borderColor: colors.neutral700
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: Colors.surface,
     },
     catButtonActive: {
-        backgroundColor: colors.primary,
-        borderColor: colors.primary
+        backgroundColor: Colors.primary,
     },
-    catText: { color: colors.neutral400, fontSize: 11 },
-    catTextActive: { color: 'black', fontWeight: 'bold' },
+    catText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
+    catTextActive: { color: 'white', fontWeight: '700' },
     inputRow: { flexDirection: 'row', gap: 10 },
     input: {
         flex: 1,
-        backgroundColor: colors.neutral900,
-        color: 'white',
-        padding: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: colors.neutral700
+        backgroundColor: Colors.surface,
+        color: Colors.textPrimary,
+        padding: 14,
+        borderRadius: 14,
+        fontSize: 14,
+        fontWeight: '600',
     },
     goButton: {
-        backgroundColor: colors.primary,
+        backgroundColor: Colors.primary,
         justifyContent: 'center',
         paddingHorizontal: 20,
-        borderRadius: 12
+        borderRadius: 14,
+        elevation: 2,
     },
-    btnText: { fontWeight: 'bold' },
+    goBtnText: { color: 'white', fontWeight: '700' },
     preview: {
         flexDirection: 'row',
-        marginTop: 20,
+        marginTop: 25,
         gap: 15,
-        backgroundColor: colors.neutral900,
-        padding: 15,
-        borderRadius: 15,
-        borderWidth: 1,
-        borderColor: colors.neutral700
+        backgroundColor: Colors.surface,
+        padding: 16,
+        borderRadius: 20,
     },
-    image: { width: 80, height: 80, borderRadius: 12, backgroundColor: '#333' },
-    pName: { color: 'white', fontWeight: 'bold', fontSize: 14 },
-    pPrice: { color: colors.primary, fontSize: 13, marginVertical: 6, fontWeight: '600' },
+    image: { width: 80, height: 80, borderRadius: 14, backgroundColor: 'white' },
+    pName: { ...typography.body, fontWeight: '700', fontSize: 14 },
+    pPrice: { color: Colors.primary, fontSize: 14, marginVertical: 6, fontWeight: '800' },
     progressBg: {
         height: 6,
-        backgroundColor: colors.neutral800,
+        backgroundColor: Colors.progressTrack,
         borderRadius: 3,
-        marginBottom: 12,
+        marginBottom: 15,
         overflow: 'hidden'
     },
     progressFill: {
         height: '100%',
-        backgroundColor: colors.primary
+        backgroundColor: Colors.progressFill
     },
-    saveButton: { backgroundColor: colors.primary, padding: 10, borderRadius: 10, alignItems: 'center' },
-    saveText: { fontSize: 12, fontWeight: 'bold', color: 'black' }
+    saveButton: { backgroundColor: Colors.primary, padding: 12, borderRadius: 12, alignItems: 'center', elevation: 2 },
+    saveText: { fontSize: 13, fontWeight: '700', color: 'white' }
 });

@@ -1,27 +1,64 @@
 import { scale, verticalScale } from "@/utils/styling";
 
-export const colors = {
-  primary: "#a3e635",
-  primaryLight: "#0ea5e9",
-  primaryDark: "#0369a1",
-  text: "#fff",
-  textLight: "#e5e5e5",
-  textLighter: "#d4d4d4",
-  white: "#fff",
-  black: "#000",
-  rose: "#ef4444",
-  green: "#16a34a",
-  neutral50: "#fafafa",
-  neutral100: "#f5f5f5",
-  neutral200: "#e5e5e5",
-  neutral300: "#d4d4d4",
-  neutral350: "#CCCCCC",
-  neutral400: "#a3a3a3",
-  neutral500: "#737373",
-  neutral600: "#525252",
-  neutral700: "#404040",
-  neutral800: "#262626",
-  neutral900: "#171717",
+// colors.ts
+export const Colors = {
+  primary: '#5B4BDB',
+  primaryLight: '#6C3BFF',
+  accent: '#FF6B35',
+  danger: '#FF4D6D',
+
+  // Cards
+  cardDark: '#2D2B55',
+  cardSalary: '#6C3BFF',
+  cardExpense: '#FF6B35',
+
+  // Chart
+  chartOrange: '#FF6B35',
+  chartNavy: '#2D2B55',
+  chartPurple: '#6C3BFF',
+  chartBarActive: '#5B4BDB',
+  chartBarInactive: '#E5E3F5',
+
+  // UI
+  background: '#FFFFFF',
+  surface: '#F5F5FA',
+  textPrimary: '#1A1A2E',
+  textSecondary: '#8E8EA9',
+
+  // Progress
+  progressFill: '#5B4BDB',
+  progressTrack: '#F0EEFF',
+  fab: '#FF6B35',
+};
+
+export const colors = Colors; // Alias for backward compatibility
+
+export const typography = {
+  header: {
+    fontSize: verticalScale(24),
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  subHeader: {
+    fontSize: verticalScale(18),
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  body: {
+    fontSize: verticalScale(14),
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
+  bodySecondary: {
+    fontSize: verticalScale(14),
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+  caption: {
+    fontSize: verticalScale(12),
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
 };
 
 export const spacingX = {
@@ -63,4 +100,17 @@ export const radius = {
   _17: verticalScale(17),
   _20: verticalScale(20),
   _30: verticalScale(30),
+};
+
+export const styles = {
+  shadow: {
+    shadowColor: Colors.primary,
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.5,
+    elevation: 10,
+  }
 };

@@ -3,8 +3,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { addDoc, collection, onSnapshot, query, serverTimestamp, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import SuccessModal from "../../components/SuccessModal";
 import { auth, firestore } from "../../config/firebase";
-import { colors } from "../../constants/theme";
+import { Colors, styles } from "../../constants/theme";
 import { parseReceiptWithGroq, parseTransactionWithGroq } from "../../services/aiService";
 
 const AddTransactionModal = ({ visible, onClose }) => {
@@ -18,7 +19,8 @@ const AddTransactionModal = ({ visible, onClose }) => {
   const [aiLoading, setAiLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
 
-  // ... existing magic fill code ...
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   const pickImage = async (useCamera = false) => {
     try {
@@ -59,10 +61,9 @@ const AddTransactionModal = ({ visible, onClose }) => {
     if (result) {
       if (result.title) setTitle(result.title);
       if (result.amount) setAmount(result.amount.toString());
-      // Date is not yet handled in state, but could be added later
-      // Default to expense for receipts
       setType("expense");
-      Alert.alert("Receipt Scanned!", "Please review the details before saving.");
+      // For premium feel, use the success modal here too?
+      // For now, categorized alert is fine or just let them save.
     } else {
       Alert.alert("Error", "Could not read receipt. Please try again.");
     }
@@ -83,10 +84,8 @@ const AddTransactionModal = ({ visible, onClose }) => {
     }
   };
 
-  // Fetch user's wallets
   useEffect(() => {
     if (!visible) return;
-
     const user = auth.currentUser;
     if (!user?.uid) return;
 
@@ -96,8 +95,6 @@ const AddTransactionModal = ({ visible, onClose }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const walletData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setWallets(walletData);
-
-      // Auto-select first wallet if available
       if (walletData.length > 0 && !selectedWalletId) {
         setSelectedWalletId(walletData[0].id);
       }
@@ -125,21 +122,53 @@ const AddTransactionModal = ({ visible, onClose }) => {
         return;
       }
 
+      let category = "Other";
+      let isAnomaly = false;
+      let anomalyReason = "";
+
+      if (type === "expense") {
+        const { autoCategorizeExpense, detectAnomaly } = await import("../../services/aiService");
+        const { getDocs, query, collection, where, limit, orderBy } = await import("firebase/firestore");
+
+        category = await autoCategorizeExpense(title.trim(), parseFloat(amount));
+
+        const historyQuery = query(
+          collection(firestore, "transactions"),
+          where("uid", "==", user.uid),
+          where("category", "==", category),
+          orderBy("createdAt", "desc"),
+          limit(5)
+        );
+        const historySnap = await getDocs(historyQuery);
+        const history = historySnap.docs.map(doc => doc.data());
+
+        const anomalyRes = await detectAnomaly({ title: title.trim(), amount: parseFloat(amount), category }, history);
+        if (anomalyRes?.isAnomaly) {
+          isAnomaly = true;
+          anomalyReason = anomalyRes.reason;
+        }
+      }
+
       await addDoc(collection(firestore, "transactions"), {
         uid: user.uid,
         walletId: selectedWalletId,
         title: title.trim(),
         amount: parseFloat(amount),
         type,
-        createdAt: serverTimestamp(),
+        category,
+        isAnomaly,
+        anomalyReason,
+        createdAt: new Date().toISOString(),
       });
 
-      Alert.alert("Success", "Transaction added!");
+      setSuccessMsg(type === "expense" ? `Successfully categorized as ${category}` + (isAnomaly ? `\n\n⚠️ ${anomalyReason}` : "") : "Transaction added successfully!");
+      setSuccessVisible(true);
+
       setTitle("");
       setAmount("");
       setType("expense");
       setSelectedWalletId("");
-      onClose();
+      setMagicText("");
     } catch (err) {
       console.error("Add Transaction Error:", err);
       Alert.alert("Error", "Failed to add transaction");
@@ -148,243 +177,235 @@ const AddTransactionModal = ({ visible, onClose }) => {
     }
   };
 
+  const handleSuccessClose = () => {
+    setSuccessVisible(false);
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: 'flex-end' }}>
-        <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 25, borderTopRightRadius: 25, maxHeight: "90%", paddingBottom: 20 }}>
-          {/* Header */}
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: colors.neutral100 }}>
-            <Text style={{ fontSize: 20, fontWeight: "700", color: colors.neutral800 }}>New Transaction</Text>
-            <TouchableOpacity onPress={onClose} style={{ padding: 5, backgroundColor: colors.neutral100, borderRadius: 20 }}>
-              <Ionicons name="close" size={20} color={colors.neutral600} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={{ padding: 20 }}>
-
-            {/* AI Section */}
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.neutral400, marginBottom: 10, letterSpacing: 0.5 }}>QUICK ADD</Text>
-
-            <View style={{ flexDirection: 'row', gap: 15, marginBottom: 25 }}>
-              {/* Scan Receipt */}
-              <TouchableOpacity
-                onPress={() => pickImage(true)}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.green + '15', // 10% opacity green
-                  padding: 15,
-                  borderRadius: 15,
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.green + '40',
-                  gap: 8
-                }}
-              >
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="camera-outline" size={22} color="#fff" />
-                </View>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: colors.green }}>Scan Receipt</Text>
-              </TouchableOpacity>
-
-              {/* Upload Gallery */}
-              <TouchableOpacity
-                onPress={() => pickImage(false)}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.primary + '15',
-                  padding: 15,
-                  borderRadius: 15,
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.primary + '40',
-                  gap: 8
-                }}
-              >
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="image-outline" size={22} color={colors.neutral800} />
-                </View>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: colors.neutral800 }}>Upload Image</Text>
+    <>
+      <Modal visible={visible} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 25, borderTopRightRadius: 25, maxHeight: "90%", paddingBottom: 20 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.surface }}>
+              <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.textPrimary }}>New Transaction</Text>
+              <TouchableOpacity onPress={onClose} style={{ padding: 5, backgroundColor: Colors.surface, borderRadius: 20 }}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            {scanning && (
-              <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.neutral50, padding: 10, borderRadius: 10 }}>
-                <ActivityIndicator size="small" color={colors.green} />
-                <Text style={{ marginLeft: 8, color: colors.neutral600, fontSize: 13 }}>Analyzing receipt...</Text>
-              </View>
-            )}
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.textSecondary, marginBottom: 10, letterSpacing: 0.5 }}>QUICK ADD</Text>
 
-            {/* Magic Fill Input */}
-            <View style={{ marginBottom: 25 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.neutral500 }}>AI Magic Fill ✨</Text>
-                {aiLoading && <ActivityIndicator size="small" color={colors.green} />}
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TextInput
-                  placeholder="e.g., 'Lunch $15' or 'Taxi 500'"
-                  value={magicText}
-                  onChangeText={setMagicText}
+              <View style={{ flexDirection: 'row', gap: 15, marginBottom: 25 }}>
+                <TouchableOpacity
+                  onPress={() => pickImage(true)}
                   style={{
                     flex: 1,
-                    backgroundColor: colors.neutral50,
-                    padding: 12,
-                    borderRadius: 12,
-                    fontSize: 15,
-                    borderWidth: 1,
-                    borderColor: colors.neutral200
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={handleMagicFill}
-                  disabled={aiLoading || !magicText.trim()}
-                  style={{
-                    backgroundColor: colors.neutral900,
-                    width: 44,
-                    borderRadius: 12,
+                    backgroundColor: '#4ade80' + '15',
+                    padding: 15,
+                    borderRadius: 15,
                     alignItems: 'center',
-                    justifyContent: 'center'
+                    borderWidth: 1,
+                    borderColor: '#4ade80' + '40',
+                    gap: 8
                   }}
                 >
-                  <Ionicons name="arrow-forward" size={20} color="#fff" />
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#4ade80', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="camera-outline" size={22} color="#fff" />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: '#4ade80' }}>Scan Receipt</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => pickImage(false)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: Colors.primary + '15',
+                    padding: 15,
+                    borderRadius: 15,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: Colors.primary + '40',
+                    gap: 8
+                  }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="image-outline" size={22} color="#fff" />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Upload Image</Text>
                 </TouchableOpacity>
               </View>
-            </View>
 
-            <View style={{ height: 1, backgroundColor: colors.neutral100, marginBottom: 25 }} />
+              {scanning && (
+                <View style={{ marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surface, padding: 10, borderRadius: 10 }}>
+                  <ActivityIndicator size="small" color="#4ade80" />
+                  <Text style={{ marginLeft: 8, color: Colors.textSecondary, fontSize: 13 }}>Analyzing receipt...</Text>
+                </View>
+              )}
 
-            {/* Manual Form */}
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.neutral400, marginBottom: 15, letterSpacing: 0.5 }}>DETAILS</Text>
-
-            {/* Wallet Selector */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 15 }}>
-              {wallets.length === 0 ? (
-                <Text style={{ color: colors.neutral400, fontStyle: 'italic', fontSize: 13 }}>No wallets found.</Text>
-              ) : (
-                wallets.map((wallet) => (
-                  <TouchableOpacity
-                    key={wallet.id}
-                    onPress={() => setSelectedWalletId(wallet.id)}
+              <View style={{ marginBottom: 25 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.textSecondary }}>AI Magic Fill ✨</Text>
+                  {aiLoading && <ActivityIndicator size="small" color={Colors.primary} />}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TextInput
+                    placeholder="e.g., 'Lunch $15' or 'Taxi 500'"
+                    value={magicText}
+                    onChangeText={setMagicText}
                     style={{
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      backgroundColor: selectedWalletId === wallet.id ? colors.green : "transparent",
+                      flex: 1,
+                      backgroundColor: Colors.surface,
+                      padding: 12,
+                      borderRadius: 12,
+                      fontSize: 15,
                       borderWidth: 1,
-                      borderColor: selectedWalletId === wallet.id ? colors.green : colors.neutral300,
+                      borderColor: Colors.progressTrack
+                    }}
+                  />
+                  <TouchableOpacity
+                    onPress={handleMagicFill}
+                    disabled={aiLoading || !magicText.trim()}
+                    style={{
+                      backgroundColor: Colors.primary,
+                      width: 44,
+                      borderRadius: 12,
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}
                   >
-                    <Text style={{
-                      color: selectedWalletId === wallet.id ? "#fff" : colors.neutral600,
-                      fontWeight: "600",
-                      fontSize: 13
-                    }}>
-                      {wallet.walletName}
-                    </Text>
+                    <Ionicons name="arrow-forward" size={20} color="#fff" />
                   </TouchableOpacity>
-                ))
-              )}
+                </View>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: Colors.progressTrack, marginBottom: 25 }} />
+
+              <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.textSecondary, marginBottom: 15, letterSpacing: 0.5 }}>DETAILS</Text>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 15 }}>
+                {wallets.length === 0 ? (
+                  <Text style={{ color: Colors.textSecondary, fontStyle: 'italic', fontSize: 13 }}>No wallets found.</Text>
+                ) : (
+                  wallets.map((wallet) => (
+                    <TouchableOpacity
+                      key={wallet.id}
+                      onPress={() => setSelectedWalletId(wallet.id)}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: 20,
+                        backgroundColor: selectedWalletId === wallet.id ? Colors.primary : "transparent",
+                        borderWidth: 1,
+                        borderColor: selectedWalletId === wallet.id ? Colors.primary : Colors.progressTrack,
+                      }}
+                    >
+                      <Text style={{
+                        color: selectedWalletId === wallet.id ? "#fff" : Colors.textSecondary,
+                        fontWeight: "600",
+                        fontSize: 13
+                      }}>
+                        {wallet.walletName}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+
+              <View style={{ marginBottom: 15 }}>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginBottom: 5 }}>Amount</Text>
+                <TextInput
+                  placeholder="0.00"
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="numeric"
+                  style={{
+                    fontSize: 24,
+                    fontWeight: "700",
+                    color: Colors.textPrimary,
+                    padding: 10,
+                    borderBottomWidth: 1,
+                    borderBottomColor: Colors.progressTrack
+                  }}
+                />
+              </View>
+
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 12, color: Colors.textSecondary, marginBottom: 5 }}>Title</Text>
+                <TextInput
+                  placeholder="What is this for?"
+                  value={title}
+                  onChangeText={setTitle}
+                  style={{
+                    fontSize: 16,
+                    color: Colors.textPrimary,
+                    padding: 10,
+                    backgroundColor: Colors.surface,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: Colors.progressTrack
+                  }}
+                />
+              </View>
+
+              <View style={{ flexDirection: "row", backgroundColor: Colors.surface, padding: 4, borderRadius: 12, marginBottom: 25 }}>
+                <TouchableOpacity
+                  onPress={() => setType("expense")}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    backgroundColor: type === "expense" ? "#fff" : "transparent",
+                    borderRadius: 10,
+                    elevation: type === "expense" ? 2 : 0,
+                  }}
+                >
+                  <Text style={{ textAlign: "center", fontWeight: "600", color: type === "expense" ? Colors.cardExpense : Colors.textSecondary }}>
+                    Expense
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setType("income")}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    backgroundColor: type === "income" ? "#fff" : "transparent",
+                    borderRadius: 10,
+                    elevation: type === "income" ? 2 : 0,
+                  }}
+                >
+                  <Text style={{ textAlign: "center", fontWeight: "600", color: type === "income" ? Colors.cardSalary : Colors.textSecondary }}>
+                    Income
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleAddTransaction}
+                disabled={loading || !selectedWalletId}
+                style={{
+                  backgroundColor: loading || !selectedWalletId ? Colors.progressTrack : Colors.primary,
+                  paddingVertical: 16,
+                  borderRadius: 15,
+                  alignItems: "center",
+                  ...styles.shadow
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+                  {loading ? "Adding..." : "Save Transaction"}
+                </Text>
+              </TouchableOpacity>
             </ScrollView>
-
-            {/* Amount Input */}
-            <View style={{ marginBottom: 15 }}>
-              <Text style={{ fontSize: 12, color: colors.neutral500, marginBottom: 5 }}>Amount</Text>
-              <TextInput
-                placeholder="0.00"
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="numeric"
-                style={{
-                  fontSize: 24,
-                  fontWeight: "700",
-                  color: colors.neutral900,
-                  padding: 10,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.neutral200
-                }}
-              />
-            </View>
-
-            {/* Title Input */}
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 12, color: colors.neutral500, marginBottom: 5 }}>Title</Text>
-              <TextInput
-                placeholder="What is this for?"
-                value={title}
-                onChangeText={setTitle}
-                style={{
-                  fontSize: 16,
-                  color: colors.neutral900,
-                  padding: 10,
-                  backgroundColor: colors.neutral50,
-                  borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: colors.neutral100
-                }}
-              />
-            </View>
-
-            {/* Type Toggle */}
-            <View style={{ flexDirection: "row", backgroundColor: colors.neutral100, padding: 4, borderRadius: 12, marginBottom: 25 }}>
-              <TouchableOpacity
-                onPress={() => setType("expense")}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  backgroundColor: type === "expense" ? "#fff" : "transparent",
-                  borderRadius: 10,
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: type === "expense" ? 1 : 0 },
-                  shadowOpacity: type === "expense" ? 0.1 : 0,
-                  shadowRadius: 2,
-                }}
-              >
-                <Text style={{ textAlign: "center", fontWeight: "600", color: type === "expense" ? colors.rose : colors.neutral500 }}>
-                  Expense
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setType("income")}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  backgroundColor: type === "income" ? "#fff" : "transparent",
-                  borderRadius: 10,
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: type === "income" ? 1 : 0 },
-                  shadowOpacity: type === "income" ? 0.1 : 0,
-                  shadowRadius: 2,
-                }}
-              >
-                <Text style={{ textAlign: "center", fontWeight: "600", color: type === "income" ? colors.green : colors.neutral500 }}>
-                  Income
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              onPress={handleAddTransaction}
-              disabled={loading || !selectedWalletId}
-              style={{
-                backgroundColor: loading || !selectedWalletId ? colors.neutral300 : colors.green,
-                paddingVertical: 16,
-                borderRadius: 15,
-                alignItems: "center",
-                shadowColor: colors.green,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
-                shadowRadius: 8,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                {loading ? "Adding..." : "Save Transaction"}
-              </Text>
-            </TouchableOpacity>
-
-          </ScrollView>
+          </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+      <SuccessModal
+        visible={successVisible}
+        title="Transaction Added"
+        message={successMsg}
+        onClose={handleSuccessClose}
+      />
+    </>
   );
 };
 

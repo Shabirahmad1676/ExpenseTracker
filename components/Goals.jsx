@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Modal, TextInput, Alert, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../constants/theme";
-import { useAuth } from "../../contexts/authContext";
-import { firestore } from "../../config/firebase";
-import { collection, onSnapshot, query, where, doc, updateDoc, increment, addDoc } from "firebase/firestore";
-import SavingsGoal from "../../components/SavingsGoal";
+import { addDoc, collection, doc, increment, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Image, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { firestore } from "../config/firebase";
+import { colors } from "../constants/theme";
+import { useAuth } from "../contexts/authContext";
+import SavingsGoal from "./SavingsGoal";
 
 const GoalsScreen = () => {
     const { user } = useAuth();
@@ -20,7 +20,7 @@ const GoalsScreen = () => {
 
         const goalsRef = collection(firestore, "savings_goals");
         const q = query(goalsRef, where("uid", "==", user.uid));
-        
+
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             setGoals(data);
@@ -53,7 +53,7 @@ const GoalsScreen = () => {
                 createdAt: new Date().toISOString(),
                 walletId: "system-savings" // Simplified for now
             });
-            
+
             Alert.alert("Success", `PKR ${amount.toLocaleString()} allocated to ${allocationModal.goal.title}`);
             setAllocationModal({ visible: false, goal: null, amount: "" });
         } catch (error) {
@@ -101,7 +101,7 @@ const GoalsScreen = () => {
                     </View>
                 </View>
 
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.allocateBtn}
                     onPress={() => setAllocationModal({ visible: true, goal: item, amount: "" })}
                 >
@@ -168,8 +168,8 @@ const GoalsScreen = () => {
                             onChangeText={(text) => setAllocationModal({ ...allocationModal, amount: text })}
                         />
                         <View style={styles.allocActions}>
-                            <TouchableOpacity 
-                                style={styles.cancelBtn} 
+                            <TouchableOpacity
+                                style={styles.cancelBtn}
                                 onPress={() => setAllocationModal({ visible: false, goal: null, amount: "" })}
                             >
                                 <Text style={styles.cancelBtnText}>Cancel</Text>
