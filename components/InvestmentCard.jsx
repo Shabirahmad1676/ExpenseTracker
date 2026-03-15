@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../constants/theme';
+import { Colors, typography } from '../constants/theme';
 
 export default function InvestmentCard({ surplus = 5000 }) {
-    // MOCK RATES (This would come from Firestore 'market_rates' updated by n8n)
+    // MOCK RATES
     const RATES = {
         GOLD_1G: 22000,
         SILVER_1G: 300,
@@ -21,16 +21,16 @@ export default function InvestmentCard({ surplus = 5000 }) {
     return (
         <View style={styles.card}>
             <View style={styles.header}>
-                <Ionicons name="trending-up" size={20} color={colors.primary} />
+                <Ionicons name="trending-up" size={18} color={Colors.primary} />
                 <Text style={styles.title}>AI Investment Advisor</Text>
             </View>
             <Text style={styles.surplus}>You have PKR {surplus.toLocaleString()} surplus!</Text>
 
-            <View style={styles.recBox}>
+            <View style={styles.recRow}>
                 <View style={styles.iconBox}>
-                    <Ionicons name={rec.icon} size={24} color="black" />
+                    <Ionicons name={rec.icon} size={22} color="white" />
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                     <Text style={styles.recTitle}>{rec.text}</Text>
                     <Text style={styles.recSub}>{rec.sub}</Text>
                 </View>
@@ -44,38 +44,41 @@ export default function InvestmentCard({ surplus = 5000 }) {
 
 const styles = StyleSheet.create({
     card: {
-        backgroundColor: colors.neutral800,
-        padding: 15,
+        backgroundColor: 'white',
+        padding: 20,
         borderRadius: 20,
-        borderWidth: 1,
-        borderColor: colors.neutral700
+        elevation: 2,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
     },
     header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
-    title: { color: colors.primary, fontWeight: 'bold', fontSize: 16 },
-    surplus: { color: colors.neutral400, fontSize: 12, marginBottom: 15 },
-    recBox: {
+    title: { color: Colors.primary, fontWeight: '700', fontSize: 16 },
+    surplus: { ...typography.caption, marginBottom: 15 },
+    recRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.neutral800,
-        padding: 10,
-        borderRadius: 15,
-        gap: 15
+        backgroundColor: Colors.surface,
+        padding: 12,
+        borderRadius: 16,
+        gap: 12
     },
     iconBox: {
-        width: 40, height: 40,
-        backgroundColor: colors.primary,
-        borderRadius: 10,
+        width: 44, height: 44,
+        backgroundColor: Colors.primary,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center'
     },
-    recTitle: { color: 'white', fontWeight: 'bold' },
-    recSub: { color: colors.neutral400, fontSize: 10 },
+    recTitle: { ...typography.body, fontWeight: '700' },
+    recSub: { ...typography.caption, fontSize: 11 },
     actionBtn: {
-        marginLeft: 'auto',
-        backgroundColor: colors.neutral700,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 8
+        backgroundColor: 'white',
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        borderRadius: 10,
+        elevation: 1
     },
-    btnText: { color: 'white', fontSize: 12 }
+    btnText: { color: Colors.primary, fontSize: 12, fontWeight: '700' }
 });

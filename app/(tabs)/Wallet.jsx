@@ -1,381 +1,334 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ScrollView, Dimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../constants/theme";
-import { useAuth } from "../../contexts/authContext";
-import { firestore } from "../../config/firebase";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import AddWalletModal from "../(modals)/AddWalletModal";
+import { firestore } from "../../config/firebase";
+import { Colors, typography } from "../../constants/theme";
+import { useAuth } from "../../contexts/authContext";
+import SuccessModal from "../../components/SuccessModal";
+
+
+
+const { width } = Dimensions.get('window');
+const cardWidth = (width - 55) / 2;
 
 const Wallet = () => {
   const { user } = useAuth();
   const [wallets, setWallets] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [editData, setEditData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
-  // Fetch wallets
+
   useEffect(() => {
     if (!user?.uid) return;
-
-    const walletsRef = collection(firestore, "wallets");
-    const q = query(walletsRef, where("uid", "==", user.uid));
+    const q = query(collection(firestore, "wallets"), where("uid", "==", user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setWallets(data);
+      setWallets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
-
     return unsubscribe;
   }, [user?.uid]);
 
-  // Fetch transactions for balance calculation
   useEffect(() => {
     if (!user?.uid) return;
-
-    const txRef = collection(firestore, "transactions");
-    const q = query(txRef, where("uid", "==", user.uid));
+    const q = query(collection(firestore, "transactions"), where("uid", "==", user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setTransactions(data);
+      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-
     return unsubscribe;
   }, [user?.uid]);
 
   const calculateTotalBalance = () => {
-    let totalIncome = 0;
-    let totalExpense = 0;
-    
-    transactions.forEach((tx) => {
-      if (tx.type === "income") totalIncome += tx.amount;
-      else totalExpense += tx.amount;
-    });
-    
-    return totalIncome - totalExpense;
+    return transactions.reduce((acc, tx) => acc + (tx.type === "income" ? tx.amount : -tx.amount), 0);
   };
 
   const calculateWalletBalance = (walletId) => {
-    let income = 0;
-    let expense = 0;
-    
-    transactions.forEach((tx) => {
-      if (tx.walletId === walletId) {
-        if (tx.type === "income") income += tx.amount;
-        else expense += tx.amount;
-      }
-    });
-    
-    return income - expense;
+    return transactions
+      .filter(tx => tx.walletId === walletId)
+      .reduce((acc, tx) => acc + (tx.type === "income" ? tx.amount : -tx.amount), 0);
+  };
+
+  const handleEditWallet = (item) => {
+    setEditData(item);
+    setModalVisible(true);
+  };
+
+  const handleDeleteWallet = async (walletId) => {
+    Alert.alert(
+      "Delete Wallet",
+      "Warning: This will permanently delete this wallet and ALL its associated transactions. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete Everything",
+          style: "destructive",
+          onPress: async () => {
+              try {
+                setLoading(true);
+                const { writeBatch, getDocs, query, collection, where } = await import("firebase/firestore");
+                const batch = writeBatch(firestore);
+                
+                batch.delete(doc(firestore, "wallets", walletId));
+                
+                const txQuery = query(
+                  collection(firestore, "transactions"), 
+                  where("walletId", "==", walletId),
+                  where("uid", "==", user.uid)
+                );
+                const txSnap = await getDocs(txQuery);
+                txSnap.forEach((txDoc) => batch.delete(txDoc.ref));
+
+                await batch.commit();
+                setLoading(false);
+                setSuccessMsg("Wallet and all its transactions have been removed.");
+                setSuccessVisible(true);
+              } catch (error) {
+              console.error("Delete Error:", error);
+              Alert.alert("Error", "Failed to delete wallet data");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const showActions = (item) => {
+    Alert.alert(
+      "Wallet Actions",
+      "What would you like to do?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Edit", onPress: () => handleEditWallet(item) },
+        { text: "Delete", style: "destructive", onPress: () => handleDeleteWallet(item.id) },
+      ]
+    );
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header Section */}
-      {/* <View style={styles.headerSection}>
-        <Text style={styles.welcomeText}>Good day!</Text>
-        <Text style={styles.userName}>{user?.displayName || 'User'}</Text>
-      </View> */}
+    <View style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 60, paddingBottom: 100 }}>
+        <Text style={styles.headerTitle}>My Wallets</Text>
 
-      {/* Total Balance Card */}
-      <View style={styles.balanceCard}>
-        <Text style={styles.balanceLabel}>Total Balance</Text>
-        <Text style={styles.balanceAmount}>${calculateTotalBalance().toLocaleString()}</Text>
-        <View style={styles.balanceIcon}>
-          <Ionicons name="wallet" size={24} color={colors.green} />
-        </View>
-      </View>
-
-      {/* Wallets Section Header */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>My Wallets</Text>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={20} color={colors.neutral900} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Wallets List */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading your wallets...</Text>
-        </View>
-      ) : wallets.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconContainer}>
-            <Ionicons name="wallet-outline" size={50} color={colors.textLight} />
+        {/* Total Balance Card */}
+        <View style={styles.balanceCard}>
+          <View>
+            <Text style={styles.balanceLabel}>Total Balance</Text>
+            <Text style={styles.balanceAmount}>${calculateTotalBalance().toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
           </View>
-          <Text style={styles.emptyTitle}>No wallets yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Create your first wallet to start tracking expenses
-          </Text>
-          <TouchableOpacity 
-            style={styles.emptyActionButton}
-            onPress={() => setModalVisible(true)}
+          <View style={styles.balanceIcon}>
+            <Ionicons name="wallet-outline" size={30} color="white" />
+          </View>
+        </View>
+
+        {/* Wallets Grid */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Available Accounts</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => {
+              setEditData(null);
+              setModalVisible(true);
+            }}
           >
-            <Ionicons name="add" size={20} color={colors.text} />
-            <Text style={styles.emptyActionText}>Add Wallet</Text>
+            <Ionicons name="add" size={24} color="white" />
           </TouchableOpacity>
         </View>
-      ) : (
-        <View style={styles.walletsGrid}>
-          {wallets.map((item) => (
-            <TouchableOpacity 
-              key={item.id} 
-              style={styles.walletCard }
-              activeOpacity={0.8}
-            >
-              <View style={styles.walletCardHeader}>
-                <View style={styles.walletIconContainer}>
-                  {item.walletImage ? (
-                    <Image source={{ uri: item.walletImage }} style={styles.walletIcon} />
-                  ) : (
-                    <Ionicons name="wallet" size={24} color={colors.text} />
-                  )}
-                </View>
-                <TouchableOpacity style={styles.optionsButton}>
-                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.textLight} />
-                </TouchableOpacity>
-              </View>
-              
-              <Text style={styles.walletCardName}>{item.walletName}</Text>
-              <Text style={styles.walletCardBalance}>
-                ${calculateWalletBalance(item.id).toFixed(2)}
-              </Text>
-              
-              <View style={styles.walletCardFooter}>
-                <Text style={styles.walletCardDate}>
-                  {new Date(item.createdAt).toLocaleDateString()}
-                </Text>
-              </View>
+
+        {loading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
+        ) : wallets.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="wallet-outline" size={60} color={Colors.textSecondary} />
+            <Text style={styles.emptyTitle}>No wallets found</Text>
+            <Text style={styles.emptySubtitle}>Start by adding a new wallet to track your finances.</Text>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={() => {
+              setEditData(null);
+              setModalVisible(true);
+            }}>
+              <Text style={styles.emptyActionText}>Create Wallet</Text>
             </TouchableOpacity>
-          ))}
-        </View>
-      )}
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {wallets.map((item) => (
+              <View key={item.id} style={styles.walletCard}>
+                <View style={styles.walletHeader}>
+                  <View style={styles.iconBox}>
+                    {item.walletImage ? <Image source={{ uri: item.walletImage }} style={styles.icon} /> : <Ionicons name="card-outline" size={24} color={Colors.primary} />}
+                  </View>
+                  <TouchableOpacity onPress={() => showActions(item)} style={styles.moreButton}>
+                    <Ionicons name="ellipsis-vertical" size={20} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.walletName} numberOfLines={1}>{item.walletName}</Text>
+                <Text style={styles.walletBalance}>${calculateWalletBalance(item.id).toLocaleString()}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
 
-      <View style={{ height: 100 }} />
-
-      <AddWalletModal 
-        visible={modalVisible} 
+      <AddWalletModal
+        visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onWalletAdded={() => {
-          setModalVisible(false);
-        }}
+        editData={editData}
       />
-    </ScrollView>
+
+      <SuccessModal 
+        visible={successVisible} 
+        title="Wallet Deleted"
+        message={successMsg} 
+        onClose={() => setSuccessVisible(false)} 
+      />
+    </View>
   );
 };
 
 export default Wallet;
 
-const { width } = Dimensions.get('window');
-const cardWidth = (width - 60) / 2; // Two cards per row with margins
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral900,
+    backgroundColor: Colors.surface,
   },
-  
-  // Header Section
-  headerSection: {
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+  headerTitle: {
+    ...typography.header,
+    marginBottom: 25,
   },
-  welcomeText: {
-    fontSize: 16,
-    color: colors.textLight,
-    fontWeight: '500',
-  },
-  userName: {
-    fontSize: 24,
-    color: colors.text,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  
-  // Balance Card
   balanceCard: {
-    backgroundColor: colors.neutral800,
-    marginHorizontal: 20,
-    marginBottom: 30,
-    marginTop:16,
-    borderRadius: 20,
-    padding: 24,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    backgroundColor: Colors.cardDark,
+    borderRadius: 24,
+    padding: 25,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 35,
     elevation: 8,
+    shadowColor: Colors.cardDark,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
   },
   balanceLabel: {
-    fontSize: 14,
-    color: colors.textLight,
-    fontWeight: '500',
-    marginBottom: 4,
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 5,
   },
   balanceAmount: {
-    fontSize: 28,
-    color: colors.text,
-    fontWeight: '700',
+    color: "white",
+    fontSize: 30,
+    fontWeight: "700",
   },
   balanceIcon: {
-    backgroundColor: colors.green + '20',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  
-  // Section Header
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 20,
-    color: colors.text,
-    fontWeight: '700',
+    ...typography.subHeader,
+    fontSize: 18,
   },
   addButton: {
-    backgroundColor: colors.green,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.green,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    backgroundColor: Colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
     elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  
-  // Loading State
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: 60,
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 15,
   },
-  loadingText: {
-    color: colors.textLight,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  
-  // Empty State
-  emptyContainer: {
-    alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 40,
-  },
-  emptyIconContainer: {
-    backgroundColor: colors.neutral800,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    color: colors.text,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 30,
-  },
-  emptyActionButton: {
-    backgroundColor: colors.green,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
-  },
-  emptyActionText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  
-  // Wallets Grid
-  walletsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  
-  // Wallet Card
   walletCard: {
-    backgroundColor: colors.neutral800,
-    borderRadius: 16,
-    padding: 16,
     width: cardWidth,
-    marginBottom: 16,
-    shadowColor: '#000',
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 16,
+    elevation: 2,
+    // shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
   },
-  walletCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+  walletHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 15,
   },
-  walletIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-
-    justifyContent: 'center',
-    alignItems: 'center',
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  walletIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
   },
-  optionsButton: {
+  moreButton: {
     padding: 4,
+    marginRight: -4,
+    marginTop: -4,
   },
-  walletCardName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
+  walletName: {
+    ...typography.body,
+    fontWeight: "600",
     marginBottom: 4,
   },
-  walletCardBalance: {
+  walletBalance: {
+    ...typography.subHeader,
+    color: Colors.primary,
     fontSize: 18,
-    fontWeight: '700',
-    color: colors.green,
-    marginBottom: 8,
   },
-  walletCardFooter: {
-    marginTop: 'auto',
+  emptyContainer: {
+    alignItems: "center",
+    marginTop: 40,
+    padding: 20,
   },
-  walletCardDate: {
-    fontSize: 12,
-    color: colors.textLight,
-    fontWeight: '500',
+  emptyTitle: {
+    ...typography.subHeader,
+    marginTop: 15,
+  },
+  emptySubtitle: {
+    ...typography.caption,
+    textAlign: "center",
+    marginTop: 5,
+    marginBottom: 25,
+  },
+  emptyActionBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  emptyActionText: {
+    color: "white",
+    fontWeight: "700",
   },
 });

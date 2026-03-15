@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native'
-import React, { useRef } from 'react'
-import { colors, spacingX, spacingY, radius } from '../../constants/theme'
+import React from 'react'
+import { Colors, spacingX, spacingY, typography, radius } from '../../constants/theme'
 import { useRouter } from 'expo-router'
 import CustomInput from '../../components/CustomInput'
 import CustomButton from '../../components/CustomButton'
@@ -14,76 +14,68 @@ const Register = () => {
   const [password, setPassword] = React.useState("");
   const { signup } = useAuth();
 
-
-  const handleRegister =async () => {
+  const handleRegister = async () => {
     if (!username || !email || !password) {
-      console.log("All fields required");
+      Alert.alert("Registration", "All fields are required");
       return;
     }
 
-     const response =  await signup(email,password,username)
-    console.log(response,"register compoent");
-
-    if(!response.success){
-      Alert.alert("sign UP",response.msg)
+    const response = await signup(email, password, username)
+    if (!response.success) {
+      Alert.alert("Sign Up Error", response.msg)
     }
   };
 
- 
-
   return (
     <View style={styles.container}>
-      
-        <Ionicons onPress={() => router.back()} name={"arrow-back"} size={30} style={styles.buttonSecondaryText} />
-     
-      <Text style={styles.heading}>Let's</Text>
-      <Text style={styles.heading}>get Started</Text>
-      <Text style={styles.subheading}>Create your account now to track all your expenses.</Text>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={22} color={Colors.primary} />
+      </TouchableOpacity>
+
+      <View style={{ marginTop: 20 }}>
+        <Text style={styles.heading}>Let's get</Text>
+        <Text style={styles.heading}>Started</Text>
+        <Text style={styles.subheading}>Create your account now to track all your expenses.</Text>
+      </View>
 
       <View style={styles.form}>
-      <CustomInput
-        value={username}
-        onChangeText={setUsername}
-        placeholder="Full name"
-        icon="person"
-        autoCapitalize="words"
-      />
-      <CustomInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Email"
-        icon="mail"
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <CustomInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Password"
-        icon="lock-closed"
-        secureTextEntry
-        autoCapitalize="none"
-      />
-
+        <CustomInput
+          value={username}
+          onChangeText={setUsername}
+          placeholder="Full name"
+          icon="person"
+          autoCapitalize="words"
+        />
+        <CustomInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Email"
+          icon="mail"
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <CustomInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Password"
+          icon="lock-closed"
+          secureTextEntry
+          autoCapitalize="none"
+        />
       </View>
 
-      {/* <Text style={styles.footer}>Already have an account?LogIn</Text> */}
+      <CustomButton 
+        title="Create account" 
+        onPress={handleRegister} 
+        style={styles.primaryButton} 
+      />
 
-
-
-      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'right',gap:10}}>
-        <Text style={{ textAlign: "right", color: colors.green, marginTop: 12 }}>
-         Don't have an account?
-        </Text>
-        <TouchableOpacity onPress={()=>router.navigate('/(auth)/Login')}>
-          <Text style={{textAlign: "right", color: colors.green, fontWeight:500.,marginTop:12}}>Login</Text>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Already have an account?</Text>
+        <TouchableOpacity onPress={() => router.navigate('/(auth)/Login')}>
+          <Text style={styles.loginText}>Login</Text>
         </TouchableOpacity>
       </View>
-
-
-      <CustomButton title="Create account" onPress={handleRegister} style={styles.primaryButton} />
-
-     
     </View>
   )
 }
@@ -93,39 +85,58 @@ export default Register
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral900,
+    backgroundColor: Colors.surface,
     paddingHorizontal: spacingX._25,
-    paddingTop: spacingY._40
+    paddingTop: spacingY._50,
+  },
+  backButton: {
+    backgroundColor: 'white',
+    padding: 10,
+    borderRadius: 12,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: 'center',
+    marginBottom: spacingY._15,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
   heading: {
-    color: colors.text,
+    ...typography.header,
     fontSize: 32,
-    fontWeight: '700',
-    marginBottom: spacingY._10
+    lineHeight: 40,
   },
   subheading: {
-    color: colors.textLight,
-    fontSize: 14,
-    marginBottom: spacingY._25
+    ...typography.bodySecondary,
+    fontSize: 15,
+    marginTop: 10,
+    marginBottom: spacingY._35,
   },
   form: {
-    gap: spacingY._15
+    gap: spacingY._20,
+    marginBottom: spacingY._30,
   },
   primaryButton: {
-    marginTop: spacingY._25
-  },
-  buttonSecondaryText: {
-    color: colors.text,
-    fontWeight: '600',
-    backgroundColor:colors.neutral600,
-    width:46,
-    marginBottom:12,
-    borderRadius:20,
-    padding:6
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    height: 56,
   },
   footer: {
-    color:colors.green,
-    textAlign:'right',
-    marginTop:12,
-  }
-})
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacingY._30,
+  },
+  footerText: {
+    ...typography.bodySecondary,
+  },
+  loginText: {
+    marginLeft: 6,
+    color: Colors.primary,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+})

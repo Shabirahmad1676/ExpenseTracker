@@ -144,3 +144,79 @@ export const getChatResponse = async (messages: any[], context: { balance: numbe
         return "I'm having trouble connecting to my brain right now. Please try again later!";
     }
 };
+
+export const autoCategorizeExpense = async (merchant: string, amount: number) => {
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "Categorize this expense based on the merchant name and amount. Reply with exactly one word from this list: Food, Transport, Shopping, Bills, Entertainment, Health, Education, Other."
+                },
+                {
+                    role: "user",
+                    content: `Merchant: ${merchant}, Amount: ${amount}`
+                }
+            ],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0,
+        });
+
+        return completion.choices[0]?.message?.content?.trim() || "Other";
+    } catch (error) {
+        console.error("Groq Categorization Error:", error);
+        return "Other";
+    }
+};
+
+export const detectAnomaly = async (newTx: { title: string, amount: number, category: string }, history: any[]) => {
+    try {
+        const prompt = `
+            New Transaction: ${JSON.stringify(newTx)}
+            History for this category (${newTx.category}): ${JSON.stringify(history)}
+            
+            Compare the new transaction to the user's history. Is it significantly higher (at least 2x average) or unusual for this user?
+            Return JSON: { "isAnomaly": boolean, "reason": "string explaining why" }.
+        `;
+
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0]?.message?.content || "{}";
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Groq Anomaly Error:", error);
+        return { isAnomaly: false };
+    }
+};
+
+export const getSpendForecasting = async (recentTransactions: any[], currentTotal: number) => {
+    try {
+        const prompt = `
+            Current Spend this Month: PKR ${currentTotal.toLocaleString()}
+            Recent Transactions: ${JSON.stringify(recentTransactions.slice(0, 20))}
+            
+            Based on these spending patterns and the current day of the month, project the total spend for the full month.
+            Provide a narrative forecast (2 sentences) and a projected total.
+            Return JSON: { "projectedTotal": number, "narrative": "string" }.
+        `;
+
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0]?.message?.content || "{}";
+        return JSON.parse(content);
+    } catch (error) {
+        console.error("Groq Forecast Error:", error);
+        return null;
+    }
+};
+

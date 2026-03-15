@@ -6,7 +6,7 @@ import {
   ActivityIndicator 
 } from 'react-native'
 import React from 'react'
-import { colors, spacingX, spacingY } from '../../constants/theme'
+import { Colors, spacingX, spacingY, typography } from '../../constants/theme'
 import { useRouter } from 'expo-router'
 import CustomInput from '../../components/CustomInput'
 import CustomButton from '../../components/CustomButton'
@@ -44,12 +44,14 @@ const Login = () => {
     <View style={styles.container}>
       {/* Back button */}
       <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={22} color={colors.text} />
+        <Ionicons name="arrow-back" size={22} color={Colors.primary} />
       </TouchableOpacity>
 
       {/* Headings */}
-      <Text style={styles.heading}>Welcome Back 👋</Text>
-      <Text style={styles.subheading}>Login to track your expenses easily.</Text>
+      <View style={{ marginTop: 20 }}>
+        <Text style={styles.heading}>Welcome Back 👋</Text>
+        <Text style={styles.subheading}>Login to track your expenses easily.</Text>
+      </View>
 
       {/* Form */}
       <View style={styles.form}>
@@ -79,11 +81,11 @@ const Login = () => {
 
       {/* Login Button */}
       <CustomButton 
-        title={!loading ? "Logging in..." : "Login"} 
+        title={loading ? "Logging in..." : "Login"} 
         onPress={handleLogin} 
         style={styles.primaryButton} 
         disabled={loading}
-        loading={loading} // 👈 if your CustomButton supports it
+        loading={loading}
       />
 
       {/* Footer */}
@@ -102,62 +104,70 @@ export default Login
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.neutral900,
+    backgroundColor: Colors.surface,
     paddingHorizontal: spacingX._25,
-    paddingTop: spacingY._40,
+    paddingTop: spacingY._50,
   },
   backButton: {
-    backgroundColor: colors.neutral700,
-    padding: 8,
-    borderRadius: 10,
-    width: 40,
+    backgroundColor: 'white',
+    padding: 10,
+    borderRadius: 12,
+    width: 44,
+    height: 44,
     alignItems: "center",
+    justifyContent: 'center',
     marginBottom: spacingY._15,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
   heading: {
-    color: colors.text,
+    ...typography.header,
     fontSize: 28,
-    fontWeight: "700",
     marginBottom: spacingY._10,
   },
   subheading: {
-    color: colors.textLight,
+    ...typography.bodySecondary,
     fontSize: 15,
-    marginBottom: spacingY._25,
+    marginBottom: spacingY._35,
   },
   form: {
-    gap: spacingY._15,
+    gap: spacingY._20,
     marginBottom: spacingY._20,
   },
   errorText: {
-    color: "red",
+    color: Colors.danger,
     fontSize: 13,
     marginTop: 4,
   },
   forgotPassword: {
-    color: colors.green,
+    color: Colors.primary,
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
     marginTop: 6,
     textAlign: "right",
   },
   primaryButton: {
-    marginTop: spacingY._20,
+    marginTop: spacingY._30,
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    height: 56,
   },
   footer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacingY._30,
+    marginTop: spacingY._40,
   },
   footerText: {
-    color: colors.textLight,
-    fontSize: 14,
+    ...typography.bodySecondary,
   },
   signUpText: {
     marginLeft: 6,
-    color: colors.green,
-    fontWeight: "600",
+    color: Colors.primary,
+    fontWeight: "700",
     fontSize: 14,
   },
 })

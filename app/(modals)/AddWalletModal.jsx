@@ -1,38 +1,42 @@
-import React, { useState, useRef } from "react";
-import { 
-  View, 
-  Text, 
-  Modal, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
-  Dimensions, 
-  KeyboardAvoidingView, 
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
+import React, { useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
-  Animated,
-  LayoutAnimation
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../constants/theme";
 import CustomButton from "../../components/CustomButton";
-import * as ImagePicker from "expo-image-picker";
-import { doc, setDoc } from "firebase/firestore";
 import { firestore } from "../../config/firebase";
+import { Colors, typography } from "../../constants/theme";
 import { useAuth } from "../../contexts/authContext";
-import { uploadImageToCloudinary } from "../../utils/cloudinary";
+import SuccessModal from "../../components/SuccessModal";
 
-const AddWalletModal = ({ visible, onClose, onWalletAdded }) => {
+
+const { width } = Dimensions.get('window');
+
+const AddWalletModal = ({ visible, onClose, onWalletAdded, editData = null }) => {
   const { user } = useAuth();
   const [walletName, setWalletName] = useState("");
   const [walletImage, setWalletImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedStep, setSelectedStep] = useState(1);
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  
-  const { width } = Dimensions.get('window');
+
+  const isEdit = !!editData;
 
   const pickImage = async () => {
     const mediaTypesFallback = (ImagePicker?.MediaType?.Images) ?? (ImagePicker?.MediaTypeOptions?.Images);
@@ -49,7 +53,7 @@ const AddWalletModal = ({ visible, onClose, onWalletAdded }) => {
     }
   };
 
-  const handleAddWallet = async () => {
+  const handleSaveWallet = async () => {
     if (!walletName.trim()) {
       Alert.alert("Error", "Wallet name is required!");
       return;
@@ -59,41 +63,38 @@ const AddWalletModal = ({ visible, onClose, onWalletAdded }) => {
     try {
       let imageUrl = walletImage;
 
-      //  ✅ If user selected an image from device (file://),
-    // first upload to Cloudinary, get back a public URL
       if (walletImage && walletImage.startsWith("file://")) {
         imageUrl = await uploadImageToCloudinary(walletImage);
       }
 
-      // ✅ Generate walletId like 16958209834...
-      const walletId = Date.now().toString();
-      // ✅ Reference to Firestore document:
-    // wallets/{user.uid_walletId}
-      const walletRef = doc(firestore, "wallets", `${user.uid}_${walletId}`);
-
-
-      //set wallet to firestore
-      await setDoc(walletRef, {
-        uid: user.uid,
-        userName: user.displayName || "Anonymous",
-        walletName: walletName.trim(),
-        walletImage: imageUrl,
-        createdAt: new Date().toISOString(),
-      });
-
-      Alert.alert("Success", "Wallet added!");
-      // Clear form
-      setWalletName("");
-      setWalletImage(null);
-      // Call callback ifprovided
-      if (onWalletAdded) {
-        onWalletAdded();
+      if (isEdit) {
+        const walletRef = doc(firestore, "wallets", editData.id);
+        await updateDoc(walletRef, {
+          walletName: walletName.trim(),
+          walletImage: imageUrl,
+          updatedAt: new Date().toISOString(),
+        });
+        setSuccessMsg("Wallet updated successfully!");
+        setSuccessVisible(true);
       } else {
-        onClose();
+        const walletId = Date.now().toString();
+        const walletRef = doc(firestore, "wallets", `${user.uid}_${walletId}`);
+        await setDoc(walletRef, {
+          uid: user.uid,
+          userName: user.displayName || "Anonymous",
+          walletName: walletName.trim(),
+          walletImage: imageUrl,
+          createdAt: new Date().toISOString(),
+        });
+        setSuccessMsg("New wallet has been created!");
+        setSuccessVisible(true);
       }
+
+      if (onWalletAdded) onWalletAdded();
+      // Notice: we don't call onClose() here yet, we wait for SuccessModal
     } catch (err) {
-      console.error("Add Wallet Error:", err);
-      Alert.alert("Error", err.message || "Failed to add wallet");
+      console.error("Wallet Error:", err);
+      Alert.alert("Error", err.message || "Failed to save wallet");
     } finally {
       setLoading(false);
     }
@@ -101,17 +102,20 @@ const AddWalletModal = ({ visible, onClose, onWalletAdded }) => {
 
   React.useEffect(() => {
     if (visible) {
+      if (isEdit) {
+        setWalletName(editData.walletName || "");
+        setWalletImage(editData.walletImage || null);
+        setSelectedStep(2);
+      }
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }).start();
     } else {
-      setSelectedStep(1);
-      setWalletName("");
-      setWalletImage(null);
+      resetForm();
     }
-  }, [visible]);
+  }, [visible, editData]);
 
   const resetForm = () => {
     setWalletName("");
@@ -120,275 +124,226 @@ const AddWalletModal = ({ visible, onClose, onWalletAdded }) => {
     setLoading(false);
   };
 
-  const handleBack = () => {
-    onClose();
-    resetForm();
-  };
-
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.modalOverlay}>
           <Animated.View style={[styles.modalContainer, { opacity: fadeAnim }]}>
-            <ScrollView 
-              style={styles.scrollView} 
+            <ScrollView
+              style={styles.scrollView}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              {/* Header */}
               <View style={styles.header}>
-                <TouchableOpacity onPress={handleBack} style={styles.closeButton}>
-                  <Ionicons name="close" size={24} color={colors.textLight} />
+                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <Ionicons name="close" size={24} color={Colors.textSecondary} />
                 </TouchableOpacity>
-                <Text style={styles.title}>Create New Wallet</Text>
+                <Text style={styles.title}>{isEdit ? "Edit Wallet" : "Create New Wallet"}</Text>
                 <View style={styles.placeholder} />
               </View>
 
-              {/* Progress Steps */}
               <View style={styles.stepIndicator}>
                 <View style={[styles.stepDot, selectedStep >= 1 && styles.stepDotActive]} />
-                <View style={[styles.stepLine, selectedStep >= 2 && styles.stepLineActive]} />
+                <View style={styles.stepLine} />
                 <View style={[styles.stepDot, selectedStep >= 2 && styles.stepDotActive]} />
               </View>
 
-              {/* Step 1: Wallet Name */}
               <View style={styles.stepContainer}>
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Wallet Name</Text>
                   <TextInput
-                    placeholder="Enter wallet name (e.g., Main Wallet, Travel)"
-                    placeholderTextColor={colors.textLight}
+                    placeholder="e.g., Main Wallet, Savings"
+                    placeholderTextColor={Colors.textSecondary}
                     value={walletName}
                     onChangeText={(text) => {
                       setWalletName(text);
-                      if (text.trim().length > 0) {
-                        setSelectedStep(2);
-                      }
+                      if (text.trim().length > 0) setSelectedStep(2);
                     }}
                     style={styles.textInput}
-                    autoFocus={true}
                   />
-                  <Text style={styles.inputHint}>Choose a memorable name for your wallet</Text>
                 </View>
 
-                {/* Step 2: Wallet Icon */}
-                {walletName.trim().length > 0 && (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Wallet Icon (Optional)</Text>
-                    <TouchableOpacity onPress={pickImage} style={styles.imagePickerCard}>
-                      {walletImage ? (
-                        <View style={styles.imageContainer}>
-                          <Image source={{ uri: walletImage }} style={styles.selectedImage} />
-                          <TouchableOpacity 
-                            style={styles.changeImageButton}
-                            onPress={pickImage}
-                          >
-                            <Ionicons name="camera" size={16} color={colors.text} />
-                          </TouchableOpacity>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Wallet Icon</Text>
+                  <TouchableOpacity onPress={pickImage} style={styles.imagePickerCard}>
+                    {walletImage ? (
+                      <View style={styles.imageContainer}>
+                        <Image source={{ uri: walletImage }} style={styles.selectedImage} />
+                        <View style={styles.changeImageBadge}>
+                          <Ionicons name="camera" size={14} color="white" />
                         </View>
-                      ) : (
-                        <View style={styles.imagePlaceholder}>
-                          <Ionicons name="image-outline" size={40} color={colors.textLight} />
-                          <Text style={styles.imagePlaceholderText}>Add Wallet Icon</Text>
-                          <Text style={styles.imagePlaceholderSubtext}>Tap to select image</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    <Text style={styles.inputHint}>Add a custom icon to identify your wallet</Text>
-                  </View>
-                )}
+                      </View>
+                    ) : (
+                      <View style={styles.imagePlaceholder}>
+                        <Ionicons name="image-outline" size={32} color={Colors.textSecondary} />
+                        <Text style={styles.imagePlaceholderText}>Add Icon</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              {/* Action Buttons */}
               <View style={styles.buttonContainer}>
                 <CustomButton
-                  title={loading ? "Creating..." : "Create Wallet"}
-                  onPress={handleAddWallet}
+                  title={loading ? "Saving..." : isEdit ? "Save Changes" : "Create Wallet"}
+                  onPress={handleSaveWallet}
                   disabled={loading || !walletName.trim()}
-                  style={styles.createButton}
                 />
-                
-                <TouchableOpacity onPress={handleBack} style={styles.cancelButton}>
+                <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
                   <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={{ height: 20 }} />
             </ScrollView>
           </Animated.View>
         </View>
       </KeyboardAvoidingView>
+      <SuccessModal 
+        visible={successVisible} 
+        title={isEdit ? "Wallet Updated" : "Wallet Created"}
+        message={successMsg} 
+        onClose={() => {
+          setSuccessVisible(false);
+          resetForm();
+          onClose();
+        }} 
+      />
     </Modal>
   );
 };
 
 export default AddWalletModal;
 
-const { width } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    backgroundColor: colors.neutral800,
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    maxHeight: '85%',
-    minHeight: '60%',
+    backgroundColor: 'white',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    height: '75%',
+    elevation: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
   },
   scrollView: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
-  
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral700,
   },
   closeButton: {
     padding: 8,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
+    ...typography.subHeader,
+    fontSize: 18,
   },
-  placeholder: {
-    width: 40,
-  },
-  
-  // Step Indicator
+  placeholder: { width: 40 },
   stepIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 25,
+    marginVertical: 10,
   },
   stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.neutral700,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.progressTrack,
   },
   stepDotActive: {
-    backgroundColor: colors.green,
+    backgroundColor: Colors.primary,
+    width: 20,
   },
   stepLine: {
-    width: 40,
+    width: 30,
     height: 2,
-    backgroundColor: colors.neutral700,
-    marginHorizontal: 10,
+    backgroundColor: Colors.progressTrack,
+    marginHorizontal: 8,
   },
-  stepLineActive: {
-    backgroundColor: colors.green,
-  },
-  
-  // Step Container
   stepContainer: {
     paddingVertical: 10,
   },
-  
-  // Input Groups
   inputGroup: {
-    marginBottom: 25,
+    marginBottom: 20,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
+    ...typography.caption,
+    fontWeight: '700',
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   textInput: {
-    backgroundColor: colors.neutral700,
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    color: Colors.textPrimary,
     fontWeight: '500',
   },
-  inputHint: {
-    fontSize: 13,
-    color: colors.textLight,
-    marginTop: 6,
-    lineHeight: 18,
-  },
-  
-  // Image Picker
   imagePickerCard: {
-    backgroundColor: colors.neutral700,
+    backgroundColor: Colors.surface,
     borderRadius: 16,
-    padding: 20,
+    paddingVertical: 30,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.progressTrack,
     borderStyle: 'dashed',
   },
   imageContainer: {
     position: 'relative',
-    alignItems: 'center',
   },
   selectedImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
-  changeImageButton: {
-    backgroundColor: colors.green,
+  changeImageBadge: {
+    backgroundColor: Colors.primary,
     width: 28,
     height: 28,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'absolute',
-    bottom: -5,
-    right: -5,
+    bottom: 0,
+    right: 0,
+    borderWidth: 3,
+    borderColor: 'white',
   },
   imagePlaceholder: {
     alignItems: 'center',
-    paddingVertical: 10,
   },
   imagePlaceholderText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
+    ...typography.caption,
     marginTop: 8,
+    fontWeight: '700',
   },
-  imagePlaceholderSubtext: {
-    fontSize: 13,
-    color: colors.textLight,
-    marginTop: 2,
-  },
-  
-  // Buttons
   buttonContainer: {
-    paddingTop: 20,
-  },
-  createButton: {
-    marginBottom: 15,
-    height: 50,
-    borderRadius: 25,
+    marginTop: 20,
+    gap: 10,
   },
   cancelButton: {
     alignItems: 'center',
     paddingVertical: 15,
   },
   cancelButtonText: {
-    fontSize: 16,
-    color: colors.textLight,
-    fontWeight: '500',
+    ...typography.body,
+    color: Colors.textSecondary,
+    fontWeight: '600',
   },
 });
