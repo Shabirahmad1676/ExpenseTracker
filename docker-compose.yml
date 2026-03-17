@@ -9,10 +9,11 @@ services:
       # Note: Basic Auth vars removed. You will set up your login via the web UI!
       - GOOGLE_APPLICATION_CREDENTIALS=/home/node/scripts/service-account.json
       # The critical fix to ensure the Execute Command node is available:
-      - NODES_EXCLUDE=[] 
+      - NODES_EXCLUDE=[]
     volumes:
       - ./ensetracker-5d277-firebase-adminsdk-fbsvc-085314b73c.json:/home/node/scripts/service-account.json
       - ./scripts/scrape_market.js:/home/node/scripts/scrape_market.js
+      - ./scripts/goal_checker.js:/home/node/scripts/goal_checker.js
       - n8n_data:/home/node/.n8n
     restart: always
 

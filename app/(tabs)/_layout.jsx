@@ -36,11 +36,16 @@ export default function TabsLayout() {
             case "Wallet":
               iconName = focused ? "wallet" : "wallet-outline";
               break;
-            case "Market":
-              iconName = focused ? "cart" : "cart-outline";
-              break;
+            // Market icon is already safely commented out!
             case "Assistant":
               iconName = focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline";
+              break;
+            case "Market":
+              iconName = focused ? "storefront" : "storefront-outline";
+              break;
+            // You might want to add an icon case for your Goals tab here!
+            case "Goals":
+              iconName = focused ? "flag" : "flag-outline";
               break;
           }
 
@@ -51,7 +56,11 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="Wallet" options={{ title: "Wallet" }} />
       <Tabs.Screen name="Assistant" options={{ title: "AI" }} />
+      <Tabs.Screen name="Goals" options={{ title: "Goal" }} />
+
+      {/* ADDED href: null TO HIDE THE MARKET TAB */}
       <Tabs.Screen name="Market" options={{ title: "Market" }} />
+
       <Tabs.Screen name="Profile" options={{ title: "Profile", href: "/Profile" }} />
       <Tabs.Screen name="Statistic" options={{ title: "Statistic", href: null }} />
     </Tabs>

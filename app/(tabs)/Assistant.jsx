@@ -17,7 +17,7 @@ import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, firestore } from '../../config/firebase';
 import { Colors, typography } from '../../constants/theme';
-import { getChatResponse } from '../../services/aiService';
+import { getChatResponse, getMarketProducts } from '../../services/aiService';
 
 const QUICK_ACTIONS = [
     { id: '1', text: 'Analyze spending', icon: 'pie-chart-outline' },
@@ -36,7 +36,7 @@ export default function Assistant() {
     ]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
-    const [financialData, setFinancialData] = useState({ balance: 0, recentTransactions: [], goals: [] });
+    const [financialData, setFinancialData] = useState({ balance: 0, recentTransactions: [], goals: [], marketProducts: [] });
     const flatListRef = useRef(null);
 
     useEffect(() => {
@@ -62,6 +62,11 @@ export default function Assistant() {
 
         const unsubscribeGoals = onSnapshot(query(collection(firestore, "savings_goals"), where("uid", "==", user.uid), where("status", "==", "active")), (snapshot) => {
             setFinancialData(prev => ({ ...prev, goals: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) }));
+        });
+
+        // Fetch top market products once
+        getMarketProducts(10).then(products => {
+            setFinancialData(prev => ({ ...prev, marketProducts: products }));
         });
 
         return () => { unsubscribeTx(); unsubscribeGoals(); };

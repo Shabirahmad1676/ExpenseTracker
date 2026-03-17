@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { collection, doc, limit, onSnapshot, orderBy, query, where, Timestamp } from "firebase/firestore";
-import { useEffect, useState, useMemo } from "react";
-import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
+import { collection, doc, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { PieChart } from "react-native-gifted-charts";
 import AddTransactionModal from "../(modals)/AddTransactionModal";
 import { auth, firestore } from "../../config/firebase";
@@ -73,7 +73,7 @@ const HomeScreen = () => {
         };
       });
       setTransactions(txData);
-      
+
       let inc = 0, exp = 0;
       txData.forEach(t => {
         if (t.type === "income") inc += Number(t.amount);
@@ -83,7 +83,7 @@ const HomeScreen = () => {
       setExpense(exp);
       setBalance(inc - exp);
       setLoading(false);
-      
+
       // Update Forecast
       if (txData.length > 5 && timeFilter === 'month') {
         const fetchForecast = async () => {
@@ -149,15 +149,15 @@ const HomeScreen = () => {
             <Ionicons name="trending-up" size={18} color={Colors.primary} />
             <Text style={styles.forecastTitle}>Spend Forecast</Text>
           </View>
-          <Text style={styles.forecastAmount}>Projected: ${forecast.projectedTotal?.toLocaleString()}</Text>
+          <Text style={styles.forecastAmount}>Projected: PKR{forecast.projectedTotal?.toLocaleString()}</Text>
           <Text style={styles.forecastNarrative}>{forecast.narrative}</Text>
         </View>
       )}
 
       <View style={styles.filterContainer}>
         {['today', 'week', 'month'].map((f) => (
-          <TouchableOpacity 
-            key={f} 
+          <TouchableOpacity
+            key={f}
             onPress={() => setTimeFilter(f)}
             style={[styles.filterBtn, timeFilter === f && styles.filterBtnActive]}
           >
@@ -189,10 +189,10 @@ const HomeScreen = () => {
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.txItem} onPress={() => setSelectedTx(item)}>
             <View style={styles.txIconBox}>
-              <Ionicons 
-                name={item.type === "income" ? "arrow-down-circle" : "arrow-up-circle"} 
-                size={24} 
-                color={item.type === "income" ? Colors.cardSalary : Colors.cardExpense} 
+              <Ionicons
+                name={item.type === "income" ? "arrow-down-circle" : "arrow-up-circle"}
+                size={24}
+                color={item.type === "income" ? Colors.cardSalary : Colors.cardExpense}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -220,10 +220,10 @@ const HomeScreen = () => {
         showsVerticalScrollIndicator={false}
       />
       <AddTransactionModal visible={showAddModal} onClose={() => setShowAddModal(false)} />
-      
+
       {/* Premium Floating Action Button */}
-      <TouchableOpacity 
-        style={styles.fab} 
+      <TouchableOpacity
+        style={styles.fab}
         onPress={() => setShowAddModal(true)}
         activeOpacity={0.8}
       >

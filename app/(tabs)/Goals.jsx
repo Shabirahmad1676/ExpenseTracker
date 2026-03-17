@@ -2,10 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { addDoc, collection, doc, increment, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { firestore } from "../config/firebase";
-import { colors } from "../constants/theme";
-import { useAuth } from "../contexts/authContext";
-import SavingsGoal from "./SavingsGoal";
+import SavingsGoal from "../../components/SavingsGoal";
+import { firestore } from "../../config/firebase";
+import { colors } from "../../constants/theme";
+import { useAuth } from "../../contexts/authContext";
 
 const GoalsScreen = () => {
     const { user } = useAuth();
@@ -37,16 +37,44 @@ const GoalsScreen = () => {
             return;
         }
 
+        const goal = allocationModal.goal;
+        const currentSaved = goal.savedAmount || 0;
+        const target = goal.targetAmount || 0;
+        const remaining = target - currentSaved;
+
+        if (amount > remaining) {
+            Alert.alert(
+                "Limit Reached", 
+                `You only need PKR ${remaining.toLocaleString()} to complete this goal. Would you like to add exactly that amount?`,
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { 
+                        text: "Add PKR " + remaining.toLocaleString(), 
+                        onPress: () => finalizeAllocation(remaining, goal) 
+                    }
+                ]
+            );
+            return;
+        }
+
+        await finalizeAllocation(amount, goal);
+    };
+
+    const finalizeAllocation = async (amount, goal) => {
         try {
-            const goalRef = doc(firestore, "savings_goals", allocationModal.goal.id);
+            const goalRef = doc(firestore, "savings_goals", goal.id);
+            const newSavedAmount = (goal.savedAmount || 0) + amount;
+            const isCompleted = newSavedAmount >= goal.targetAmount;
+
             await updateDoc(goalRef, {
-                savedAmount: increment(amount)
+                savedAmount: increment(amount),
+                status: isCompleted ? 'completed' : goal.status
             });
 
             // Log as a transaction to deduct from balance
             await addDoc(collection(firestore, "transactions"), {
                 uid: user.uid,
-                title: `Saving for ${allocationModal.goal.title}`,
+                title: `Saving for ${goal.title}`,
                 amount: amount,
                 type: "expense", // Deduct from main balance
                 category: "savings",
@@ -54,7 +82,12 @@ const GoalsScreen = () => {
                 walletId: "system-savings" // Simplified for now
             });
 
-            Alert.alert("Success", `PKR ${amount.toLocaleString()} allocated to ${allocationModal.goal.title}`);
+            Alert.alert(
+                isCompleted ? "Goal Completed! 🎯" : "Success", 
+                isCompleted 
+                    ? `Congratulations! You've reached your target for ${goal.title}.` 
+                    : `PKR ${amount.toLocaleString()} allocated to ${goal.title}`
+            );
             setAllocationModal({ visible: false, goal: null, amount: "" });
         } catch (error) {
             console.error("Allocation Error:", error);
@@ -63,51 +96,75 @@ const GoalsScreen = () => {
     };
 
     const getPacing = (goal) => {
+        if (!goal.createdAt || !goal.targetDate) return { label: "Planning", color: colors.neutral500 };
+        
         const start = new Date(goal.createdAt);
         const end = new Date(goal.targetDate);
         const totalDuration = end - start;
+        
+        if (totalDuration <= 0) return { label: "Overdue", color: colors.orange || "#FFA500" };
+        
         const elapsed = new Date() - start;
         const expectedProgress = Math.min(100, (elapsed / totalDuration) * 100);
-        const actualProgress = (goal.savedAmount / goal.targetAmount) * 100;
+        const saved = goal.savedAmount || 0;
+        const target = goal.targetAmount || 1;
+        const actualProgress = (saved / target) * 100;
 
         if (actualProgress >= expectedProgress) return { label: "On Track", color: colors.green };
         return { label: "Needs Attention", color: colors.orange || "#FFA500" };
     };
 
     const renderItem = ({ item }) => {
-        const progress = Math.min(100, (item.savedAmount / item.targetAmount) * 100);
+        const saved = item.savedAmount || 0;
+        const target = item.targetAmount || 1;
+        const progress = Math.min(100, (saved / target) * 100);
         const pacing = getPacing(item);
 
+        // Check if the goal was marked completed by your backend
+        const isCompleted = item.status === 'completed';
+
         return (
-            <View style={styles.goalCard}>
+            <View style={[styles.goalCard, isCompleted && { borderColor: colors.green }]}>
                 <View style={styles.goalHeader}>
                     <Image source={{ uri: item.imageUrl || "https://placehold.co/400" }} style={styles.goalImage} />
                     <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={styles.goalTitle} numberOfLines={1}>{item.title}</Text>
                         <Text style={styles.categoryBadge}>{item.category?.toUpperCase()}</Text>
                     </View>
-                    <View style={[styles.pacingBadge, { backgroundColor: pacing.color + '20' }]}>
-                        <Text style={[styles.pacingText, { color: pacing.color }]}>{pacing.label}</Text>
+
+                    {/* CONDITIONAL BADGE: Show 'Goal Met!' if completed, otherwise show normal pacing */}
+                    <View style={[styles.pacingBadge, { backgroundColor: isCompleted ? colors.green + '20' : pacing.color + '20' }]}>
+                        <Text style={[styles.pacingText, { color: isCompleted ? colors.green : pacing.color }]}>
+                            {isCompleted ? "Goal Met! 🎉" : pacing.label}
+                        </Text>
                     </View>
                 </View>
 
                 <View style={styles.progressContainer}>
                     <View style={styles.progressLabelRow}>
-                        <Text style={styles.progressText}>PKR {item.savedAmount.toLocaleString()} / {item.targetAmount.toLocaleString()}</Text>
-                        <Text style={styles.percentText}>{progress.toFixed(0)}%</Text>
+                        <Text style={styles.progressText}>PKR {saved.toLocaleString()} / {target.toLocaleString()}</Text>
+                        <Text style={[styles.percentText, isCompleted && { color: colors.green }]}>{progress.toFixed(0)}%</Text>
                     </View>
                     <View style={styles.progressBarBg}>
-                        <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+                        <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: isCompleted ? colors.green : colors.primary }]} />
                     </View>
                 </View>
 
-                <TouchableOpacity
-                    style={styles.allocateBtn}
-                    onPress={() => setAllocationModal({ visible: true, goal: item, amount: "" })}
-                >
-                    <Ionicons name="add" size={16} color="black" />
-                    <Text style={styles.allocateBtnText}>Add Funds</Text>
-                </TouchableOpacity>
+                {/* CONDITIONAL BUTTON: Hide 'Add Funds' if they already finished it */}
+                {!isCompleted ? (
+                    <TouchableOpacity
+                        style={styles.allocateBtn}
+                        onPress={() => setAllocationModal({ visible: true, goal: item, amount: "" })}
+                    >
+                        <Ionicons name="add" size={16} color="black" />
+                        <Text style={styles.allocateBtnText}>Add Funds</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={[styles.allocateBtn, { backgroundColor: colors.neutral700 }]}>
+                        <Ionicons name="checkmark-circle" size={16} color={colors.green} />
+                        <Text style={[styles.allocateBtnText, { color: 'white' }]}>Purchased / Target Hit</Text>
+                    </View>
+                )}
             </View>
         );
     };
@@ -190,7 +247,7 @@ export default GoalsScreen;
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.neutral900, paddingHorizontal: 20, paddingTop: 60 },
     header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-    headerTitle: { fontSize: 28, fontWeight: "bold", color: "white" },
+    headerTitle: { fontSize: 28, fontWeight: "bold", color: "black" },
     addGoalBtn: { backgroundColor: colors.primary, width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
     listContent: { paddingBottom: 100 },
     goalCard: { backgroundColor: colors.neutral800, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.neutral700 },

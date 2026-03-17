@@ -118,13 +118,19 @@ export default function Market() {
         const user = auth.currentUser;
         if (!user) { Alert.alert("Login Required", "Please login to set financial goals."); return; }
         try {
+            const targetDate = new Date();
+            targetDate.setMonth(targetDate.getMonth() + 3); // Default 3 months timeframe
+
             await addDoc(collection(firestore, "savings_goals"), {
                 uid: user.uid,
                 title: item.name,
                 targetAmount: item.price,
+                savedAmount: 0,
+                category: item.category || 'Product',
                 imageUrl: item.imageUrl || item.image || null,
                 status: 'active',
-                createdAt: serverTimestamp()
+                createdAt: serverTimestamp(),
+                targetDate: targetDate.toISOString()
             });
             Alert.alert("Goal Set! 🎯", `Added ${item.name} to your savings goals.`);
         } catch (error) { Alert.alert("Error", "Could not save goal"); }
