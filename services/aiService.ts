@@ -1,4 +1,6 @@
+import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 import { groq } from "../config/aiConfig";
+import { firestore } from "../config/firebase";
 
 export const parseTransactionWithGroq = async (text: string) => {
     try {
@@ -105,28 +107,58 @@ export const parseProductDetails = async (htmlChunk: string) => {
     }
 };
 
-export const getChatResponse = async (messages: any[], context: { balance: number, recentTransactions: any[], goals?: any[] }) => {
+export const getMarketProducts = async (limitCount: number = 10) => {
+    try {
+        const q = query(
+            collection(firestore, "market_products"),
+            orderBy("lastUpdated", "desc"),
+            limit(limitCount)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+    } catch (error) {
+        console.error("Error fetching market products:", error);
+        return [];
+    }
+};
+
+export const getChatResponse = async (messages: any[], context: { 
+    balance: number, 
+    recentTransactions: any[], 
+    goals?: any[],
+    marketProducts?: any[]
+}) => {
     try {
         const goalsContext = context.goals && context.goals.length > 0
-            ? `Active Financial Goals: ${JSON.stringify(context.goals.map(g => ({ name: g.name, target: g.targetPrice })))}`
+            ? `Active Financial Goals: ${JSON.stringify(context.goals.map(g => ({ name: g.title || g.name, target: g.targetAmount || g.targetPrice, saved: g.savedAmount || 0 })))}`
             : "No active financial goals set.";
 
+        const marketContext = context.marketProducts && context.marketProducts.length > 0
+            ? `Real-time Market Prices (PriceOye): ${JSON.stringify(context.marketProducts.map(p => ({ name: p.name, price: p.price, category: p.category })))}`
+            : "Market data currently unavailable.";
+
         const systemPrompt = `
-            You are Montra AI, a personal financial assistant for the Expense Tracker app.
+            You are Montra AI, a personal financial assistant for the Expense Tracker app in Pakistan.
             Your goal is to help users manage their money, provide spending insights, and offer budgeting advice.
             
             Current Financial Context:
             - Current Balance: PKR ${context.balance.toLocaleString()}
             - Recent Transactions: ${JSON.stringify(context.recentTransactions)}
             - ${goalsContext}
+            - ${marketContext}
             
             Instructions:
             1. Be helpful, professional, and empathetic.
-            2. Use the provided financial context to answer specific questions about spending.
-            3. Keep advice practical and locally relevant (Pakistan context).
-            4. Use PKR for all currency references.
-            5. If asked about buying something, recommend checking the "Market" tab.
-            6. CRITICAL: If a user has a goal, proactively offer advice on how to reach it faster based on their current balance and transactions.
+            2. Use the provided financial context (balance, history, goals) to answer specific questions.
+            3. Use the Market context (PriceOye data) to answer questions about product prices, value for money, and affordability.
+            4. If a user asks "Can I afford X?", compare its market price with their balance and current savings progress.
+            5. Keep advice practical and locally relevant to Pakistan.
+            6. Use PKR for all currency references.
+            7. Proactively suggest setting a "Savings Goal" or "Sinking Fund" if they want something they cannot afford yet.
+            8. If they have an active goal, give them a status update if they ask about their budget.
         `;
 
         const completion = await groq.chat.completions.create({
@@ -196,17 +228,23 @@ export const detectAnomaly = async (newTx: { title: string, amount: number, cate
 
 export const getSpendForecasting = async (recentTransactions: any[], currentTotal: number) => {
     try {
+        const today = new Date().toISOString().split('T')[0];
         const prompt = `
+            Today's Date: ${today}
             Current Spend this Month: PKR ${currentTotal.toLocaleString()}
-            Recent Transactions: ${JSON.stringify(recentTransactions.slice(0, 20))}
+            Recent Transactions (last 20): ${JSON.stringify(recentTransactions.slice(0, 20))}
             
-            Based on these spending patterns and the current day of the month, project the total spend for the full month.
-            Provide a narrative forecast (2 sentences) and a projected total.
+            Instructions:
+            1. Based on the current date, calculate/forecast the total projected spend for the entire month.
+            2. Result must be ONLY a valid JSON object.
+            3. The 'projectedTotal' MUST be a single integer or float number.
+            4. DO NOT use mathematical expressions, formulas, or strings in 'projectedTotal'.
+            
             Return JSON: { "projectedTotal": number, "narrative": "string" }.
         `;
 
         const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "system", content: "You are a budgeting expert. Return ONLY JSON. No explanations outside the JSON block." }, { role: "user", content: prompt }],
             model: "llama-3.3-70b-versatile",
             temperature: 0,
             response_format: { type: "json_object" }
